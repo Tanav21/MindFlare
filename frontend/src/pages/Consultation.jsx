@@ -18,11 +18,18 @@ const Consultation = () => {
   const [transcription, setTranscription] = useState([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [socket, setSocket] = useState(null);
+  const [isCallActive, setIsCallActive] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected');
+  
+  // Refs
+  const socketRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const remoteStreamRef = useRef(null);
+  const peerConnectionRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
   const recognitionRef = useRef(null);
-  const localStreamRef = useRef(null); // Use ref instead of state to prevent race conditions
   const remoteStreamsRef = useRef({}); // userId -> MediaStream (for handling multiple tracks)
   const peersRef = useRef({});
   const iceCandidateQueueRef = useRef({}); // userId -> array of candidates
@@ -30,6 +37,31 @@ const Consultation = () => {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const cleanup = () => {
+    // Stop local stream
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+    }
+
+    // Close peer connection
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    // Disconnect socket
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
+    // Stop transcription
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
   };
 
   const fetchConsultation = async () => {
@@ -299,13 +331,18 @@ const Consultation = () => {
         remoteVideoRef.current.srcObject = null;
       }
     });
+
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected');
+      setConnectionStatus('disconnected');
+    });
   };
 
   const initializeVideo = async () => {
     try {
       logWebRTCState('initializing-video', {});
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { width: 1280, height: 720 },
         audio: true,
       });
       
@@ -707,7 +744,7 @@ const Consultation = () => {
   };
 
   const sendMessage = () => {
-    if (!messageInput.trim() || !socket || !consultation) return;
+    if (!messageInput.trim() || !socketRef.current || !consultation) return;
 
     const messageData = {
       roomId: consultation.roomId,
@@ -750,6 +787,7 @@ const Consultation = () => {
   const startConsultation = async () => {
     try {
       await api.post(`/consultations/${consultation.roomId}/start`);
+      await initializeVideo();
       startTranscription();
     } catch (error) {
       console.error('Error starting consultation:', error);
@@ -799,6 +837,8 @@ const Consultation = () => {
       navigate('/dashboard');
     } catch (error) {
       console.error('Error ending consultation:', error);
+      cleanup();
+      navigate('/dashboard');
     }
   };
 
@@ -871,9 +911,14 @@ const Consultation = () => {
             ? `Dr. ${appointment.doctorId?.firstName} ${appointment.doctorId?.lastName}`
             : `${appointment.patientId?.firstName} ${appointment.patientId?.lastName}`}
         </h2>
-        <button onClick={endConsultation} className="btn-end">
-          End Consultation
-        </button>
+        <div className="header-info">
+          <span className={`connection-status status-${connectionStatus}`}>
+            {connectionStatus}
+          </span>
+          <button onClick={endConsultation} className="btn-end">
+            End Consultation
+          </button>
+        </div>
       </div>
 
       <div className="consultation-content">
@@ -885,6 +930,11 @@ const Consultation = () => {
               playsInline
               className="remote-video"
             />
+            {!isCallActive && (
+              <div className="video-placeholder">
+                <p>Waiting for other participant...</p>
+              </div>
+            )}
             <video
               ref={localVideoRef}
               autoPlay
@@ -894,28 +944,32 @@ const Consultation = () => {
             />
           </div>
           <div className="video-controls">
-            <button
-              onClick={toggleVideo}
-              className={`control-btn ${isVideoActive ? 'active' : ''}`}
-            >
-              {isVideoActive ? '📹' : '📹❌'} Video
-            </button>
-            <button
-              onClick={toggleAudio}
-              className={`control-btn ${isAudioActive ? 'active' : ''}`}
-            >
-              {isAudioActive ? '🎤' : '🎤❌'} Audio
-            </button>
-            <button
-              onClick={isTranscribing ? stopTranscription : startTranscription}
-              className={`control-btn ${isTranscribing ? 'active' : ''}`}
-            >
-              {isTranscribing ? '⏹️' : '🎙️'} Transcription
-            </button>
-            {consultation.status === 'scheduled' && (
+            {!isCallActive && consultation.status === 'scheduled' && (
               <button onClick={startConsultation} className="btn-start">
-                Start Consultation
+                Start Video Call
               </button>
+            )}
+            {isCallActive && (
+              <>
+                <button
+                  onClick={toggleVideo}
+                  className={`control-btn ${isVideoActive ? 'active' : ''}`}
+                >
+                  {isVideoActive ? '📹' : '📹❌'} Video
+                </button>
+                <button
+                  onClick={toggleAudio}
+                  className={`control-btn ${isAudioActive ? 'active' : ''}`}
+                >
+                  {isAudioActive ? '🎤' : '🎤❌'} Audio
+                </button>
+                <button
+                  onClick={isTranscribing ? stopTranscription : startTranscription}
+                  className={`control-btn ${isTranscribing ? 'active' : ''}`}
+                >
+                  {isTranscribing ? '⏹️' : '🎙️'} Transcription
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -925,23 +979,28 @@ const Consultation = () => {
             <h3>Chat</h3>
             <div className="messages-container">
               {messages.map((msg, idx) => (
-                <div
-                  key={msg._id || `msg-${idx}-${msg.timestamp}`}
-                  className={`message ${
-                    msg.senderRole === user.role ? 'own' : 'other'
-                  }`}
-                >
-                  <div className="message-header">
-                    <strong>
-                      {msg.senderRole === 'patient' ? 'Patient' : 'Doctor'}
-                    </strong>
-                    <span className="timestamp">
-                      {new Date(msg.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <div className="message-text">{msg.message}</div>
-                </div>
-              ))}
+  <div
+    key={msg._id || `msg-${idx}-${msg.timestamp}`}
+    className={`message ${
+      msg.senderRole === user.role ? 'own' : 'other'
+    }`}
+  >
+    <div className="message-header">
+      <strong>
+        {msg.senderRole === 'patient' ? 'Patient' : 'Doctor'}
+      </strong>
+      <span className="timestamp">
+        {new Date(msg.timestamp).toLocaleTimeString()}
+      </span>
+    </div>
+
+    {/* ✅ MESSAGE BODY (THIS WAS MISSING) */}
+    <div className="message-text">
+      {msg.message}
+    </div>
+  </div>
+))}
+
               <div ref={messagesEndRef} />
             </div>
             <div className="chat-input">
@@ -951,13 +1010,14 @@ const Consultation = () => {
                 onChange={(e) => setMessageInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                 placeholder="Type a message..."
+                disabled={!socketRef.current}
               />
-              <button onClick={sendMessage} className="btn-send">
+              <button onClick={sendMessage} className="btn-send" disabled={!socketRef.current}>
                 Send
               </button>
             </div>
           </div>
-
+            
           <div className="transcription-section">
             <h3>Transcription</h3>
             <div className="transcription-container">
