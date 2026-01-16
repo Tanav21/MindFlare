@@ -4,6 +4,16 @@ import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import './Dashboard.css';
 
+/* ICONS */
+import {
+  FaStethoscope,
+  FaCalendarPlus,
+  FaCalendarAlt,
+  FaVideo,
+  FaMoneyBillWave,
+  FaCalendarTimes
+} from 'react-icons/fa';
+
 const Dashboard = () => {
   const { user, profile, logout } = useAuth();
   const navigate = useNavigate();
@@ -36,8 +46,13 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard">
+      {/* NAVBAR */}
       <nav className="dashboard-nav">
-        <h1>Telehealth Platform</h1>
+        <h1 className="brand">
+          <FaStethoscope className="brand-icon" />
+          Telehealth Platform
+        </h1>
+
         <div className="nav-actions">
           <span>Welcome, {profile?.firstName || user?.email}</span>
           <button onClick={handleLogout} className="btn-logout">
@@ -45,7 +60,9 @@ const Dashboard = () => {
           </button>
         </div>
       </nav>
+
       <div className="dashboard-content">
+        {/* PATIENT VIEW */}
         {user?.role === 'patient' && (
           <>
             <div className="dashboard-header">
@@ -54,12 +71,15 @@ const Dashboard = () => {
                 onClick={() => navigate('/book-appointment')}
                 className="btn-primary"
               >
+                <FaCalendarPlus style={{ marginRight: 8 }} />
                 Book New Appointment
               </button>
             </div>
+
             <div className="appointments-grid">
               {appointments.length === 0 ? (
                 <div className="empty-state">
+                  <FaCalendarTimes size={40} />
                   <p>No appointments yet. Book your first consultation!</p>
                 </div>
               ) : (
@@ -69,18 +89,30 @@ const Dashboard = () => {
                       Dr. {appointment.doctorId?.firstName}{' '}
                       {appointment.doctorId?.lastName}
                     </h3>
+
                     <p className="specialty">
                       {appointment.doctorId?.specialization}
                     </p>
+
                     <p className="date">
-                      {new Date(appointment.appointmentDate).toLocaleString()}
+                      <FaCalendarAlt />{' '}
+                      {new Date(
+                        appointment.appointmentDate
+                      ).toLocaleString()}
                     </p>
+
+                    {/* ✅ STATUS TEXT UPDATED HERE */}
                     <p className={`status status-${appointment.status}`}>
-                      {appointment.status}
+                      Status:{' '}
+                      {appointment.status.charAt(0).toUpperCase() +
+                        appointment.status.slice(1)}
                     </p>
+
                     <p className="payment-status">
-                      Payment: {appointment.paymentStatus}
+                      <FaMoneyBillWave /> Payment:{' '}
+                      {appointment.paymentStatus}
                     </p>
+
                     {appointment.status === 'confirmed' && (
                       <button
                         onClick={() =>
@@ -88,6 +120,7 @@ const Dashboard = () => {
                         }
                         className="btn-secondary"
                       >
+                        <FaVideo style={{ marginRight: 8 }} />
                         Start Consultation
                       </button>
                     )}
@@ -97,14 +130,18 @@ const Dashboard = () => {
             </div>
           </>
         )}
+
+        {/* DOCTOR VIEW */}
         {user?.role === 'doctor' && (
           <>
             <div className="dashboard-header">
               <h2>Your Appointments</h2>
             </div>
+
             <div className="appointments-grid">
               {appointments.length === 0 ? (
                 <div className="empty-state">
+                  <FaCalendarTimes size={40} />
                   <p>No appointments scheduled yet.</p>
                 </div>
               ) : (
@@ -114,13 +151,25 @@ const Dashboard = () => {
                       {appointment.patientId?.firstName}{' '}
                       {appointment.patientId?.lastName}
                     </h3>
-                    <p className="specialty">{appointment.specialty}</p>
+
+                    <p className="specialty">
+                      {appointment.specialty}
+                    </p>
+
                     <p className="date">
-                      {new Date(appointment.appointmentDate).toLocaleString()}
+                      <FaCalendarAlt />{' '}
+                      {new Date(
+                        appointment.appointmentDate
+                      ).toLocaleString()}
                     </p>
+
+                    {/* ✅ STATUS TEXT UPDATED HERE */}
                     <p className={`status status-${appointment.status}`}>
-                      {appointment.status}
+                      Status:{' '}
+                      {appointment.status.charAt(0).toUpperCase() +
+                        appointment.status.slice(1)}
                     </p>
+
                     {appointment.status === 'confirmed' && (
                       <button
                         onClick={() =>
@@ -128,6 +177,7 @@ const Dashboard = () => {
                         }
                         className="btn-secondary"
                       >
+                        <FaVideo style={{ marginRight: 8 }} />
                         Start Consultation
                       </button>
                     )}

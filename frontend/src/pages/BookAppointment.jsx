@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { FaUserMd, FaBriefcase, FaDollarSign, FaStar, FaCalendarAlt } from 'react-icons/fa';
 import api from '../utils/api';
 import './BookAppointment.css';
 
@@ -18,9 +19,7 @@ const BookAppointment = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedSpecialization) {
-      fetchDoctors();
-    }
+    if (selectedSpecialization) fetchDoctors();
   }, [selectedSpecialization]);
 
   const fetchSpecializations = async () => {
@@ -28,7 +27,7 @@ const BookAppointment = () => {
       const response = await api.get('/doctors/specializations');
       setSpecializations(response.data);
     } catch (error) {
-      console.error('Error fetching specializations:', error);
+      console.error(error);
     }
   };
 
@@ -39,7 +38,7 @@ const BookAppointment = () => {
       );
       setDoctors(response.data);
     } catch (error) {
-      console.error('Error fetching doctors:', error);
+      console.error(error);
     }
   };
 
@@ -59,7 +58,6 @@ const BookAppointment = () => {
         appointmentDate: new Date(appointmentDate).toISOString(),
       });
 
-      // Navigate to payment page
       navigate(`/payment/${response.data.appointment._id}`);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to book appointment');
@@ -72,11 +70,12 @@ const BookAppointment = () => {
     <div className="book-appointment">
       <div className="book-appointment-container">
         <h1>Book Appointment</h1>
+        <p className="step-indicator">Step 1 of 3 • Choose Doctor & Time</p>
+
         <div className="booking-form">
           <div className="form-group">
-            <label htmlFor="specialization">Select Specialty</label>
+            <label>Select Specialty</label>
             <select
-              id="specialization"
               value={selectedSpecialization}
               onChange={(e) => {
                 setSelectedSpecialization(e.target.value);
@@ -95,9 +94,10 @@ const BookAppointment = () => {
           {selectedSpecialization && (
             <div className="form-group">
               <label>Select Doctor</label>
+
               <div className="doctors-list">
                 {doctors.length === 0 ? (
-                  <p>No doctors available for this specialty</p>
+                  <p className="empty-state">🩺 No doctors available</p>
                 ) : (
                   doctors.map((doctor) => (
                     <div
@@ -107,18 +107,32 @@ const BookAppointment = () => {
                       }`}
                       onClick={() => setSelectedDoctor(doctor)}
                     >
-                      <h3>
-                        Dr. {doctor.firstName} {doctor.lastName}
-                      </h3>
+                      <div className="doctor-avatar">
+                        {doctor.firstName[0]}
+                        {doctor.lastName[0]}
+                      </div>
+
+                      <h3 className="doctor-name">
+                        <FaUserMd className="doctor-icon" />
+                               Dr. {doctor.firstName} {doctor.lastName}
+                          </h3>
+
+
                       <p className="specialization">{doctor.specialization}</p>
+
                       {doctor.bio && <p className="bio">{doctor.bio}</p>}
+
                       <div className="doctor-info">
-                        <span>Experience: {doctor.experience} years</span>
+                        <span>
+                          <FaBriefcase /> {doctor.experience} yrs
+                        </span>
                         <span className="fee">
-                          Fee: ${doctor.consultationFee}
+                          <FaDollarSign /> ${doctor.consultationFee}
                         </span>
                         {doctor.rating > 0 && (
-                          <span>Rating: {doctor.rating.toFixed(1)}/5</span>
+                          <span>
+                            <FaStar /> {doctor.rating.toFixed(1)}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -130,10 +144,13 @@ const BookAppointment = () => {
 
           {selectedDoctor && (
             <div className="form-group">
-              <label htmlFor="appointmentDate">Select Date & Time</label>
+              <label className="label-with-icon">
+                <FaCalendarAlt className="label-icon" />
+                 Select Date & Time
+              </label>
+
               <input
                 type="datetime-local"
-                id="appointmentDate"
                 value={appointmentDate}
                 onChange={(e) => setAppointmentDate(e.target.value)}
                 min={new Date().toISOString().slice(0, 16)}
@@ -146,20 +163,11 @@ const BookAppointment = () => {
           {selectedDoctor && appointmentDate && (
             <div className="booking-summary">
               <h3>Booking Summary</h3>
-              <p>
-                <strong>Doctor:</strong> Dr. {selectedDoctor.firstName}{' '}
-                {selectedDoctor.lastName}
-              </p>
-              <p>
-                <strong>Specialty:</strong> {selectedDoctor.specialization}
-              </p>
-              <p>
-                <strong>Date & Time:</strong>{' '}
-                {new Date(appointmentDate).toLocaleString()}
-              </p>
-              <p>
-                <strong>Consultation Fee:</strong> ${selectedDoctor.consultationFee}
-              </p>
+              <p><strong>Doctor:</strong> Dr. {selectedDoctor.firstName} {selectedDoctor.lastName}</p>
+              <p><strong>Specialty:</strong> {selectedDoctor.specialization}</p>
+              <p><strong>Date & Time:</strong> {new Date(appointmentDate).toLocaleString()}</p>
+              <p><strong>Fee:</strong> ${selectedDoctor.consultationFee}</p>
+
               <button
                 onClick={handleBookAppointment}
                 disabled={loading}
@@ -167,6 +175,8 @@ const BookAppointment = () => {
               >
                 {loading ? 'Booking...' : 'Proceed to Payment'}
               </button>
+
+              <p className="trust-text">🔒 Secure & HIPAA Compliant</p>
             </div>
           )}
         </div>

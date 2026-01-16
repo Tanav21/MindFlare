@@ -1,114 +1,137 @@
+/* Page background */
 .register-container {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
+  background: #f3f6fb;
+  padding: 32px;
+  font-family: "Inter", system-ui, sans-serif;
 }
 
+/* Main Card */
 .register-card {
-  background: white;
-  border-radius: 12px;
-  padding: 40px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  background: #ffffff;
   width: 100%;
-  max-width: 600px;
+  max-width: 760px;
+  border-radius: 22px;
+  padding: 42px 48px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.12);
 }
 
+/* Heading */
 .register-card h1 {
   text-align: center;
-  margin-bottom: 30px;
-  color: #333;
-  font-size: 28px;
+  font-size: 30px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 26px;
 }
 
+/* Patient / Doctor toggle */
 .user-type-selector {
   display: flex;
-  gap: 10px;
-  margin-bottom: 30px;
+  background: #f8fafc;
+  border-radius: 14px;
+  padding: 6px;
+  margin-bottom: 34px;
 }
 
 .user-type-selector button {
   flex: 1;
-  padding: 12px;
-  border: 2px solid #e0e0e0;
-  background: white;
-  border-radius: 8px;
-  font-size: 16px;
+  border: none;
+  background: transparent;
+  padding: 12px 0;
+  font-size: 15px;
   font-weight: 600;
+  color: #6b7280;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.3s;
-  color: #666;
+  transition: all 0.3s ease;
 }
 
 .user-type-selector button.active {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.35);
 }
 
+/* Two-column layout */
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 15px;
+  gap: 22px;
 }
 
+/* Form groups */
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 8px;
-  color: #555;
+  font-size: 14px;
   font-weight: 500;
+  color: #374151;
+  margin-bottom: 6px;
 }
 
+/* Inputs */
 .form-group input,
 .form-group select,
 .form-group textarea {
   width: 100%;
-  padding: 12px;
-  border: 2px solid #e0e0e0;
-  border-radius: 8px;
-  font-size: 16px;
-  transition: border-color 0.3s;
-  font-family: inherit;
+  padding: 13px 14px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  font-size: 14px;
+  transition: all 0.25s ease;
 }
 
+.form-group textarea {
+  resize: none;
+  min-height: 100px;
+}
+
+/* Focus state */
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
 }
 
+/* Error */
 .error-message {
-  background: #fee;
-  color: #c33;
+  background: #fee2e2;
+  color: #991b1b;
   padding: 12px;
-  border-radius: 8px;
-  margin-bottom: 20px;
+  border-radius: 10px;
   text-align: center;
+  font-size: 14px;
+  margin-bottom: 20px;
 }
 
+/* Submit button */
 .btn-primary {
-  width: 100%;
-  padding: 12px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  width: 93%;
+    padding: 14px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 19px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    height: 60px;
 }
 
 .btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 16px 35px rgba(109, 131, 242, 0.4);
 }
 
 .btn-primary:disabled {
@@ -116,24 +139,87 @@
   cursor: not-allowed;
 }
 
+/* Login link */
 .login-link {
+  margin-top: 22px;
   text-align: center;
-  margin-top: 20px;
-  color: #666;
+  font-size: 14px;
+  color: #6b7280;
 }
 
 .login-link a {
-  color: #667eea;
-  text-decoration: none;
+  color: #4f46e5;
   font-weight: 600;
+  text-decoration: none;
 }
 
 .login-link a:hover {
   text-decoration: underline;
 }
 
+/* Mobile */
 @media (max-width: 768px) {
+  .register-card {
+    padding: 30px 24px;
+  }
+
   .form-row {
     grid-template-columns: 1fr;
   }
+}
+
+.form-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.btn-reset {
+    width: 102%;
+    padding: 12px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    margin-top: 20px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-reset:hover:not(:disabled){
+  transform: translateY(-1px);
+  box-shadow: 0 16px 35px rgba(109, 131, 242, 0.4);
+}
+.btn-reset:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-reset:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Ensure primary button takes full width of its grid cell */
+.btn-primary {
+  width: 100%;
+}
+
+
+
+.register-icon {
+  width: 70px;
+  height: 70px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: white;
+  box-shadow: 0 12px 30px rgba(102, 126, 234, 0.35);
 }
