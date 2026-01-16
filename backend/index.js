@@ -36,18 +36,54 @@ app.get('/', (req, res) => {
   res.json({ message: 'Telehealth API Server is running' });
 });
 
-// Socket.io for real-time chat
+// Socket.io for real-time chat and WebRTC signaling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
     console.log(`User ${socket.id} joined room ${roomId}`);
+    
+    // Notify other users in the room
+    socket.to(roomId).emit('user-joined', { userId: socket.id });
   });
 
   socket.on('leave-room', (roomId) => {
     socket.leave(roomId);
     console.log(`User ${socket.id} left room ${roomId}`);
+    socket.to(roomId).emit('user-left', { userId: socket.id });
+  });
+
+  // WebRTC Signaling: Offer
+  socket.on('webrtc-offer', (data) => {
+    const { roomId, offer, userId } = data;
+    console.log(`WebRTC offer from ${socket.id} in room ${roomId}`);
+    // Send offer to other users in the room
+    socket.to(roomId).emit('webrtc-offer', {
+      offer,
+      userId: socket.id,
+    });
+  });
+
+  // WebRTC Signaling: Answer
+  socket.on('webrtc-answer', (data) => {
+    const { roomId, answer, userId } = data;
+    console.log(`WebRTC answer from ${socket.id} in room ${roomId}`);
+    // Send answer back to the offerer
+    socket.to(roomId).emit('webrtc-answer', {
+      answer,
+      userId: socket.id,
+    });
+  });
+
+  // WebRTC Signaling: ICE Candidate
+  socket.on('webrtc-ice-candidate', (data) => {
+    const { roomId, candidate, userId } = data;
+    // Forward ICE candidate to other users in the room
+    socket.to(roomId).emit('webrtc-ice-candidate', {
+      candidate,
+      userId: socket.id,
+    });
   });
 
   socket.on('chat-message', async (data) => {
@@ -61,7 +97,7 @@ io.on('connection', (socket) => {
       timestamp: new Date(),
     });
 
-    // Save message to database (you can add this functionality)
+    // Save message to database
     try {
       const Consultation = require('./models/Consultation');
       const consultation = await Consultation.findOne({ roomId });
