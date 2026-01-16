@@ -67,6 +67,9 @@ app.use('/api/doctors', require('./routes/doctors'));
 app.use('/api/appointments', require('./routes/appointments'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/consultations', require('./routes/consultations'));
+app.use('/uploads', express.static('uploads'));
+app.use('/api/upload', require('./routes/upload'));
+
 
 // Health check
 app.get('/', (req, res) => {
@@ -183,13 +186,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat-message', async (data) => {
-    const { roomId, senderId, senderRole, message } = data;
+    const { roomId, senderId, senderRole, message,file } = data;
     
     // Broadcast message to all users in the room
     io.to(roomId).emit('chat-message', {
       senderId,
       senderRole,
       message,
+      file,
       timestamp: new Date(),
     });
 
@@ -202,6 +206,7 @@ io.on('connection', (socket) => {
           senderId,
           senderRole,
           message,
+          file,
           timestamp: new Date(),
         });
         await consultation.save();
