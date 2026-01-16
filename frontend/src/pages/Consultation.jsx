@@ -24,8 +24,6 @@ const Consultation = () => {
   // Refs
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
-  const remoteStreamRef = useRef(null);
-  const peerConnectionRef = useRef(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -46,22 +44,42 @@ const Consultation = () => {
       localStreamRef.current = null;
     }
 
-    // Close peer connection
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
+    // Close all peer connections
+    Object.values(peersRef.current).forEach((peerConnection) => {
+      if (peerConnection && peerConnection.close) {
+        peerConnection.close();
+      }
+    });
+    peersRef.current = {};
+
+    // Clean up all remote streams
+    Object.values(remoteStreamsRef.current).forEach((stream) => {
+      stream.getTracks().forEach(track => track.stop());
+    });
+    remoteStreamsRef.current = {};
 
     // Disconnect socket
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
+    if (socket) {
+      socket.disconnect();
+      setSocket(null);
+    }
+
+    // Clean up queues and state
+    iceCandidateQueueRef.current = {};
+    connectionStateRef.current = {};
 
     // Stop transcription
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+
+    // Reset UI state
+    setIsCallActive(false);
+    setConnectionStatus('disconnected');
   };
 
   const fetchConsultation = async () => {
@@ -89,9 +107,12 @@ const Consultation = () => {
     
     const newSocket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000');
     setSocket(newSocket);
+    socketRef.current = newSocket; // Set ref for consistency
+    setConnectionStatus('connecting');
 
     newSocket.on('connect', async () => {
       console.log('Socket connected:', newSocket.id);
+      setConnectionStatus('connected');
       
       // Initialize video first and WAIT for it to complete
       await initializeVideo();
@@ -99,10 +120,11 @@ const Consultation = () => {
       // Verify stream exists before joining room
       if (localStreamRef.current && localStreamRef.current.getTracks().length > 0) {
         logWebRTCState('stream-ready', { tracks: localStreamRef.current.getTracks().length });
-        newSocket.emit('join-room', consultation.roomId);
+      newSocket.emit('join-room', consultation.roomId);
       } else {
         logWebRTCState('stream-not-ready', { error: 'Stream not available after initialization' });
         console.error('Stream not ready, cannot join room');
+        setConnectionStatus('error');
       }
     });
 
@@ -330,11 +352,16 @@ const Consultation = () => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = null;
       }
+      
+      // Update UI state
+      setIsCallActive(false);
+      setConnectionStatus('disconnected');
     });
 
-    socket.on('disconnect', () => {
+    newSocket.on('disconnect', () => {
       console.log('Socket disconnected');
       setConnectionStatus('disconnected');
+      setIsCallActive(false);
     });
   };
 
@@ -536,6 +563,8 @@ const Consultation = () => {
       // Attach stream to video element
       if (remoteVideoRef.current && remoteStream.getTracks().length > 0) {
         remoteVideoRef.current.srcObject = remoteStream;
+        setIsCallActive(true); // Call is active when remote stream is received
+        setConnectionStatus('connected');
         logWebRTCState('remote-stream-attached', { 
           userId, 
           trackCount: remoteStream.getTracks().length,
@@ -598,12 +627,18 @@ const Consultation = () => {
       
       if (state === 'failed') {
         logWebRTCState('ice-connection-failed', { userId });
+        setConnectionStatus('reconnecting');
         peerConnection.restartIce();
       } else if (state === 'disconnected') {
         logWebRTCState('ice-connection-disconnected', { userId });
+        setConnectionStatus('disconnected');
+        setIsCallActive(false);
         // Don't close immediately, wait for reconnection attempt
       } else if (state === 'connected' || state === 'completed') {
         logWebRTCState('ice-connection-established', { userId, state });
+        setConnectionStatus('connected');
+      } else if (state === 'checking') {
+        setConnectionStatus('connecting');
       }
     };
 
@@ -614,15 +649,23 @@ const Consultation = () => {
       
       if (state === 'failed') {
         logWebRTCState('connection-failed', { userId });
+        setConnectionStatus('failed');
+        setIsCallActive(false);
         // Try to reconnect
         peerConnection.restartIce();
       } else if (state === 'closed') {
         logWebRTCState('connection-closed', { userId });
+        setIsCallActive(false);
+        setConnectionStatus('disconnected');
         delete peersRef.current[userId];
         delete iceCandidateQueueRef.current[userId];
         delete connectionStateRef.current[userId];
       } else if (state === 'connected') {
         logWebRTCState('connection-established', { userId });
+        setConnectionStatus('connected');
+        setIsCallActive(true);
+      } else if (state === 'connecting') {
+        setConnectionStatus('connecting');
       }
     };
 
@@ -736,7 +779,7 @@ const Consultation = () => {
   const saveTranscription = async (entry) => {
     try {
       if (consultation?.roomId) {
-        await api.post(`/consultations/${consultation.roomId}/transcription`, entry);
+      await api.post(`/consultations/${consultation.roomId}/transcription`, entry);
       }
     } catch (error) {
       console.error('Error saving transcription:', error);
@@ -744,7 +787,8 @@ const Consultation = () => {
   };
 
   const sendMessage = () => {
-    if (!messageInput.trim() || !socketRef.current || !consultation) return;
+    const currentSocket = socketRef.current || socket;
+    if (!messageInput.trim() || !currentSocket || !consultation) return;
 
     const messageData = {
       roomId: consultation.roomId,
@@ -758,7 +802,7 @@ const Consultation = () => {
     // Use a temporary ID to prevent duplicates when socket receives it back
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     setMessages((prev) => [...prev, { ...messageData, _id: tempId }]);
-    socket.emit('chat-message', messageData);
+    currentSocket.emit('chat-message', messageData);
     setMessageInput('');
   };
 
@@ -788,9 +832,12 @@ const Consultation = () => {
     try {
       await api.post(`/consultations/${consultation.roomId}/start`);
       await initializeVideo();
+      setIsCallActive(true);
+      setConnectionStatus('connecting');
       startTranscription();
     } catch (error) {
       console.error('Error starting consultation:', error);
+      setConnectionStatus('error');
     }
   };
 
@@ -915,9 +962,9 @@ const Consultation = () => {
           <span className={`connection-status status-${connectionStatus}`}>
             {connectionStatus}
           </span>
-          <button onClick={endConsultation} className="btn-end">
-            End Consultation
-          </button>
+        <button onClick={endConsultation} className="btn-end">
+          End Consultation
+        </button>
         </div>
       </div>
 
@@ -951,24 +998,24 @@ const Consultation = () => {
             )}
             {isCallActive && (
               <>
-                <button
-                  onClick={toggleVideo}
-                  className={`control-btn ${isVideoActive ? 'active' : ''}`}
-                >
-                  {isVideoActive ? '📹' : '📹❌'} Video
-                </button>
-                <button
-                  onClick={toggleAudio}
-                  className={`control-btn ${isAudioActive ? 'active' : ''}`}
-                >
-                  {isAudioActive ? '🎤' : '🎤❌'} Audio
-                </button>
-                <button
-                  onClick={isTranscribing ? stopTranscription : startTranscription}
-                  className={`control-btn ${isTranscribing ? 'active' : ''}`}
-                >
-                  {isTranscribing ? '⏹️' : '🎙️'} Transcription
-                </button>
+            <button
+              onClick={toggleVideo}
+              className={`control-btn ${isVideoActive ? 'active' : ''}`}
+            >
+              {isVideoActive ? '📹' : '📹❌'} Video
+            </button>
+            <button
+              onClick={toggleAudio}
+              className={`control-btn ${isAudioActive ? 'active' : ''}`}
+            >
+              {isAudioActive ? '🎤' : '🎤❌'} Audio
+            </button>
+            <button
+              onClick={isTranscribing ? stopTranscription : startTranscription}
+              className={`control-btn ${isTranscribing ? 'active' : ''}`}
+            >
+              {isTranscribing ? '⏹️' : '🎙️'} Transcription
+            </button>
               </>
             )}
           </div>
@@ -979,27 +1026,27 @@ const Consultation = () => {
             <h3>Chat</h3>
             <div className="messages-container">
               {messages.map((msg, idx) => (
-  <div
+                <div
     key={msg._id || `msg-${idx}-${msg.timestamp}`}
-    className={`message ${
-      msg.senderRole === user.role ? 'own' : 'other'
-    }`}
-  >
-    <div className="message-header">
-      <strong>
-        {msg.senderRole === 'patient' ? 'Patient' : 'Doctor'}
-      </strong>
-      <span className="timestamp">
-        {new Date(msg.timestamp).toLocaleTimeString()}
-      </span>
-    </div>
+                  className={`message ${
+                    msg.senderRole === user.role ? 'own' : 'other'
+                  }`}
+                >
+                  <div className="message-header">
+                    <strong>
+                      {msg.senderRole === 'patient' ? 'Patient' : 'Doctor'}
+                    </strong>
+                    <span className="timestamp">
+                      {new Date(msg.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
 
     {/* ✅ MESSAGE BODY (THIS WAS MISSING) */}
     <div className="message-text">
       {msg.message}
     </div>
-  </div>
-))}
+                </div>
+              ))}
 
               <div ref={messagesEndRef} />
             </div>
@@ -1010,14 +1057,14 @@ const Consultation = () => {
                 onChange={(e) => setMessageInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                 placeholder="Type a message..."
-                disabled={!socketRef.current}
+                disabled={!socketRef.current && !socket}
               />
-              <button onClick={sendMessage} className="btn-send" disabled={!socketRef.current}>
+              <button onClick={sendMessage} className="btn-send" disabled={!socketRef.current && !socket}>
                 Send
               </button>
             </div>
           </div>
-            
+
           <div className="transcription-section">
             <h3>Transcription</h3>
             <div className="transcription-container">
