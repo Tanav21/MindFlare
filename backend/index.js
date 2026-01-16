@@ -9,9 +9,12 @@ const app = express();
 const server = http.createServer(app);
 
 // Parse multiple frontend URLs if provided (comma-separated)
+// Production-safe: no localhost assumptions, supports HTTPS
 const frontendUrls = process.env.FRONTEND_URL 
-  ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
-  : ['http://localhost:5173'];
+  ? process.env.FRONTEND_URL.split(',').map(url => url.trim()).filter(url => url)
+  : process.env.NODE_ENV === 'production' 
+    ? [] // Production should always set FRONTEND_URL
+    : ['http://localhost:5173']; // Only default to localhost in development
 
 const io = socketIo(server, {
   cors: {
@@ -33,6 +36,28 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+// app.use(
+//   cors({
+//     origin: (origin, callback) => {
+//       // Allow server-to-server, Postman, curl
+//       if (!origin) return callback(null, true);
+
+//       if (frontendUrls.includes(origin)) {
+//         return callback(null, true);
+//       }
+
+//       console.error('Blocked by CORS:', origin);
+//       return callback(new Error('Not allowed by CORS'));
+//     },
+//     credentials: true,
+//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//     allowedHeaders: ['Content-Type', 'Authorization'],
+//   })
+// );
+
+// 🔥 REQUIRED for preflight
+// app.options('*', cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

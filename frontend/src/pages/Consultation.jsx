@@ -105,13 +105,32 @@ const Consultation = () => {
       socket.disconnect();
     }
     
-    // Get API URL - use environment variable or detect LAN IP
-    const apiUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 
-                   import.meta.env.VITE_SOCKET_URL || 
-                   'http://localhost:5000';
+    // Get API URL - production-safe: use environment variable, detect protocol, no localhost assumptions
+    let apiUrl = import.meta.env.VITE_SOCKET_URL || 
+                 import.meta.env.VITE_API_URL?.replace('/api', '') || 
+                 null;
+    
+    // If no URL configured, detect based on current location
+    if (!apiUrl) {
+      const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost';
+      const protocol = isSecure ? 'https:' : 'http:';
+      const hostname = window.location.hostname === 'localhost' 
+        ? 'localhost' 
+        : window.location.hostname;
+      const port = import.meta.env.VITE_API_PORT || '5000';
+      apiUrl = `${protocol}//${hostname}:${port}`;
+    }
+    
+    // Ensure URL doesn't have trailing slash
+    apiUrl = apiUrl.replace(/\/$/, '');
     
     console.log('Connecting to socket:', apiUrl);
-    const newSocket = io(apiUrl);
+    const newSocket = io(apiUrl, {
+      transports: ['websocket', 'polling'], // Fallback to polling if websocket fails
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
     setSocket(newSocket);
     socketRef.current = newSocket; // Set ref for consistency
     setConnectionStatus('connecting');
@@ -268,11 +287,17 @@ const Consultation = () => {
       
       if (!peerConnection) {
         logWebRTCState('ice-candidate-queued', { from, reason: 'no-peer-connection' });
-        // Queue candidate
-        if (!iceCandidateQueueRef.current[from]) {
-          iceCandidateQueueRef.current[from] = [];
+        // Queue candidate (PRODUCTION-SAFE: validate candidate and queue)
+        if (candidate && typeof candidate === 'object') {
+          if (!iceCandidateQueueRef.current[from]) {
+            iceCandidateQueueRef.current[from] = [];
+          }
+          if (Array.isArray(iceCandidateQueueRef.current[from])) {
+            iceCandidateQueueRef.current[from].push(candidate);
+          } else {
+            iceCandidateQueueRef.current[from] = [candidate];
+          }
         }
-        iceCandidateQueueRef.current[from].push(candidate);
         return;
       }
       
@@ -280,22 +305,39 @@ const Consultation = () => {
         return; // Null candidate means end of candidates
       }
       
+      // Validate candidate before processing
+      if (typeof candidate !== 'object') {
+        logWebRTCState('ice-candidate-invalid', { from, candidate: typeof candidate });
+        return;
+      }
+      
+      // Check if connection is still valid
+      if (peerConnection.signalingState === 'closed') {
+        logWebRTCState('ice-candidate-rejected', { from, reason: 'connection-closed' });
+        return;
+      }
+      
       // If remote description is set, add immediately
       if (peerConnection.remoteDescription) {
         try {
           await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-          logWebRTCState('ice-candidate-added', { from });
+          logWebRTCState('ice-candidate-added', { from, candidate: candidate.candidate?.substring(0, 50) });
         } catch (error) {
           logWebRTCState('ice-candidate-error', { from, error: error.message });
           console.error('Error adding ICE candidate:', error);
         }
       } else {
-        // Queue candidate until remote description is set
+        // Queue candidate until remote description is set (PRODUCTION-SAFE)
         logWebRTCState('ice-candidate-queued', { from, reason: 'no-remote-description' });
         if (!iceCandidateQueueRef.current[from]) {
           iceCandidateQueueRef.current[from] = [];
         }
-        iceCandidateQueueRef.current[from].push(candidate);
+        // Validate queue exists and is array before pushing
+        if (Array.isArray(iceCandidateQueueRef.current[from])) {
+          iceCandidateQueueRef.current[from].push(candidate);
+        } else {
+          iceCandidateQueueRef.current[from] = [candidate];
+        }
       }
     });
 
@@ -373,11 +415,31 @@ const Consultation = () => {
 
   const initializeVideo = async () => {
     try {
-      logWebRTCState('initializing-video', {});
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: true,
-      });
+      // Check for secure context (required for getUserMedia in production)
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const error = 'getUserMedia is not available. Requires HTTPS or localhost.';
+        logWebRTCState('media-devices-unavailable', { error, isSecure: window.isSecureContext });
+        alert('Camera/microphone access requires a secure connection (HTTPS).');
+        throw new Error(error);
+      }
+      
+      logWebRTCState('initializing-video', { isSecureContext: window.isSecureContext });
+      
+      // Production-safe media constraints
+      const constraints = {
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user',
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
       // Store in ref immediately (synchronous)
       localStreamRef.current = stream;
@@ -423,19 +485,44 @@ const Consultation = () => {
     }
   };
 
-  // Process queued ICE candidates
+  // Process queued ICE candidates - PRODUCTION-SAFE with validation
   const processIceCandidateQueue = async (userId, peerConnection) => {
+    // Validate inputs
+    if (!peerConnection || !userId) {
+      logWebRTCState('ice-queue-process-skipped', { userId, reason: 'invalid-inputs' });
+      return;
+    }
+    
+    // Check if remote description is set (required for adding candidates)
+    if (!peerConnection.remoteDescription) {
+      logWebRTCState('ice-queue-process-skipped', { userId, reason: 'no-remote-description' });
+      return;
+    }
+    
     const queue = iceCandidateQueueRef.current[userId];
-    if (queue && queue.length > 0) {
+    if (queue && Array.isArray(queue) && queue.length > 0) {
       logWebRTCState('processing-ice-queue', { userId, count: queue.length });
-      const candidates = [...queue];
-      iceCandidateQueueRef.current[userId] = [];
+      const candidates = [...queue]; // Copy array
+      iceCandidateQueueRef.current[userId] = []; // Clear queue immediately
       
       for (const candidate of candidates) {
         try {
+          // Validate candidate before adding
+          if (!candidate || typeof candidate !== 'object') {
+            logWebRTCState('ice-candidate-invalid', { userId, candidate: typeof candidate });
+            continue;
+          }
+          
+          // Check if connection is still valid
+          if (peerConnection.signalingState === 'closed') {
+            logWebRTCState('ice-queue-process-stopped', { userId, reason: 'connection-closed' });
+            break;
+          }
+          
           await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-          logWebRTCState('queued-ice-candidate-added', { userId });
+          logWebRTCState('queued-ice-candidate-added', { userId, candidate: candidate.candidate?.substring(0, 50) });
         } catch (error) {
+          // Don't throw - continue processing other candidates
           logWebRTCState('queued-ice-candidate-error', { userId, error: error.message });
           console.error('Error adding queued ICE candidate:', error);
         }
@@ -497,12 +584,18 @@ const Consultation = () => {
       activeTracks: activeTracks.length
     });
     
-    // Create RTCPeerConnection with STUN and TURN servers for cross-device connectivity
+    // Create RTCPeerConnection with production-grade STUN + TURN configuration
     const iceServers = [
-      // STUN servers for NAT traversal
+      // Primary STUN servers (Google's public STUN)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      // Additional STUN servers for redundancy
+      { urls: 'stun:stun.stunprotocol.org:3478' },
+      { urls: 'stun:stun.voiparound.com' },
+      { urls: 'stun:stun.voipbuster.com' },
     ];
     
     // Add TURN server if configured (required for cross-network connections)
@@ -510,26 +603,36 @@ const Consultation = () => {
     const turnUsername = import.meta.env.VITE_TURN_USERNAME;
     const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
     
-    if (turnServer) {
-      iceServers.push({
-        urls: turnServer,
-        username: turnUsername,
-        credential: turnCredential,
+    if (turnServer && turnUsername && turnCredential) {
+      // Custom TURN server with credentials
+      const turnUrls = Array.isArray(turnServer) ? turnServer : turnServer.split(',').map(s => s.trim());
+      turnUrls.forEach(url => {
+        iceServers.push({
+          urls: url,
+          username: turnUsername,
+          credential: turnCredential,
+        });
       });
-      logWebRTCState('turn-server-configured', { userId, turnServer });
+      logWebRTCState('turn-server-configured', { userId, turnServer: turnUrls[0] });
     } else {
-      // Free public TURN servers (may have rate limits)
+      // Production-grade free TURN servers (multiple for redundancy)
       iceServers.push(
+        // Metered.ca TURN servers (free tier)
         { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
         { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+        // Additional free TURN servers for fallback
+        { urls: 'turn:relay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:relay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:relay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
       );
-      logWebRTCState('using-public-turn-servers', { userId });
+      logWebRTCState('using-public-turn-servers', { userId, count: 6 });
     }
     
     const peerConnection = new RTCPeerConnection({
       iceServers: iceServers,
       iceCandidatePoolSize: 10, // Pre-gather candidates for faster connection
+      iceTransportPolicy: 'all', // Use both UDP and TCP
     });
 
     // Initialize ICE candidate queue for this peer
@@ -549,86 +652,167 @@ const Consultation = () => {
     const senders = peerConnection.getSenders();
     logWebRTCState('peer-tracks-verified', { userId, senderCount: senders.length });
 
-    // Handle remote stream - manually create MediaStream if event.streams is undefined
+    // Handle remote stream - PRODUCTION-SAFE: handles all edge cases
     peerConnection.ontrack = (event) => {
-      logWebRTCState('track-received', { 
-        userId, 
-        trackId: event.track.id,
-        trackKind: event.track.kind,
-        hasStreams: !!event.streams,
-        streamsLength: event.streams?.length || 0,
-        trackReadyState: event.track.readyState
-      });
-      
-      // Get or create remote stream for this peer
-      let remoteStream = remoteStreamsRef.current[userId];
-      
-      if (!remoteStream) {
-        // Create new MediaStream if it doesn't exist
-        remoteStream = new MediaStream();
-        remoteStreamsRef.current[userId] = remoteStream;
-        logWebRTCState('remote-stream-created', { userId });
-      }
-      
-      // Add track to stream (handles both event.streams and manual stream)
-      if (event.track && event.track.readyState === 'live') {
-        // Check if track already in stream
-        const existingTrack = remoteStream.getTracks().find(t => t.id === event.track.id);
-        if (!existingTrack) {
-          remoteStream.addTrack(event.track);
-          logWebRTCState('track-added-to-stream', { 
-            userId, 
-            trackId: event.track.id,
-            trackKind: event.track.kind,
-            streamTrackCount: remoteStream.getTracks().length
-          });
-        } else {
-          logWebRTCState('track-already-in-stream', { userId, trackId: event.track.id });
+      try {
+        // CRITICAL: Validate event and track exist
+        if (!event || !event.track) {
+          logWebRTCState('ontrack-invalid-event', { userId, hasEvent: !!event, hasTrack: !!event?.track });
+          return;
         }
-      } else {
-        logWebRTCState('track-not-live', { 
-          userId, 
-          trackId: event.track?.id,
-          readyState: event.track?.readyState 
-        });
-      }
-      
-      // Attach stream to video element
-      if (remoteVideoRef.current && remoteStream.getTracks().length > 0) {
-        remoteVideoRef.current.srcObject = remoteStream;
-        setIsCallActive(true); // Call is active when remote stream is received
-        setConnectionStatus('connected');
-        logWebRTCState('remote-stream-attached', { 
-          userId, 
-          trackCount: remoteStream.getTracks().length,
-          videoTracks: remoteStream.getVideoTracks().length,
-          audioTracks: remoteStream.getAudioTracks().length
-        });
-      }
-      
-      // Handle track ended
-      event.track.onended = () => {
-        logWebRTCState('remote-track-ended', { userId, trackId: event.track.id });
-        remoteStream.removeTrack(event.track);
+
+        const track = event.track;
+        const streams = event.streams || []; // Safe fallback for undefined streams
         
-        // If no tracks left, clear the stream
-        if (remoteStream.getTracks().length === 0) {
-          delete remoteStreamsRef.current[userId];
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = null;
+        logWebRTCState('track-received', { 
+          userId, 
+          trackId: track?.id || 'unknown',
+          trackKind: track?.kind || 'unknown',
+          hasStreams: !!event.streams,
+          streamsLength: streams?.length || 0,
+          trackReadyState: track?.readyState || 'unknown'
+        });
+        
+        // Get or create remote stream for this peer
+        let remoteStream = remoteStreamsRef.current[userId];
+        
+        if (!remoteStream) {
+          try {
+            remoteStream = new MediaStream();
+            remoteStreamsRef.current[userId] = remoteStream;
+            logWebRTCState('remote-stream-created', { userId });
+          } catch (error) {
+            logWebRTCState('remote-stream-creation-error', { userId, error: error.message });
+            return;
           }
-          logWebRTCState('remote-stream-cleared', { userId });
         }
-      };
-      
-      // Handle track mute/unmute
-      event.track.onmute = () => {
-        logWebRTCState('remote-track-muted', { userId, trackId: event.track.id, kind: event.track.kind });
-      };
-      
-      event.track.onunmute = () => {
-        logWebRTCState('remote-track-unmuted', { userId, trackId: event.track.id, kind: event.track.kind });
-      };
+        
+        // Validate remoteStream exists and has getTracks method
+        if (!remoteStream || typeof remoteStream.getTracks !== 'function') {
+          logWebRTCState('remote-stream-invalid', { userId });
+          return;
+        }
+        
+        // Add track to stream - handle all edge cases
+        if (track && track.readyState === 'live') {
+          try {
+            // Safely check if track already exists
+            const existingTracks = remoteStream.getTracks();
+            const existingTrack = existingTracks && Array.isArray(existingTracks) 
+              ? existingTracks.find(t => t && t.id === track.id)
+              : null;
+            
+            if (!existingTrack) {
+              remoteStream.addTrack(track);
+              const currentTracks = remoteStream.getTracks();
+              logWebRTCState('track-added-to-stream', { 
+                userId, 
+                trackId: track.id,
+                trackKind: track.kind,
+                streamTrackCount: currentTracks ? currentTracks.length : 0
+              });
+            } else {
+              logWebRTCState('track-already-in-stream', { userId, trackId: track.id });
+            }
+          } catch (error) {
+            logWebRTCState('track-add-error', { userId, error: error.message, trackId: track?.id });
+          }
+        } else {
+          logWebRTCState('track-not-live', { 
+            userId, 
+            trackId: track?.id,
+            readyState: track?.readyState 
+          });
+        }
+        
+        // Attach stream to video element - safe with null checks
+        try {
+          const tracks = remoteStream.getTracks();
+          if (remoteVideoRef.current && tracks && Array.isArray(tracks) && tracks.length > 0) {
+            remoteVideoRef.current.srcObject = remoteStream;
+            setIsCallActive(true);
+            setConnectionStatus('connected');
+            
+            // Safely get track counts
+            const videoTracks = remoteStream.getVideoTracks ? remoteStream.getVideoTracks() : [];
+            const audioTracks = remoteStream.getAudioTracks ? remoteStream.getAudioTracks() : [];
+            
+            logWebRTCState('remote-stream-attached', { 
+              userId, 
+              trackCount: tracks.length,
+              videoTracks: Array.isArray(videoTracks) ? videoTracks.length : 0,
+              audioTracks: Array.isArray(audioTracks) ? audioTracks.length : 0
+            });
+          }
+        } catch (error) {
+          logWebRTCState('stream-attach-error', { userId, error: error.message });
+        }
+        
+        // Handle track ended - with null safety
+        if (track && typeof track.addEventListener === 'function') {
+          track.addEventListener('ended', () => {
+            try {
+              logWebRTCState('remote-track-ended', { userId, trackId: track.id });
+              if (remoteStream && typeof remoteStream.removeTrack === 'function') {
+                remoteStream.removeTrack(track);
+                
+                const remainingTracks = remoteStream.getTracks();
+                if (!remainingTracks || (Array.isArray(remainingTracks) && remainingTracks.length === 0)) {
+                  delete remoteStreamsRef.current[userId];
+                  if (remoteVideoRef.current) {
+                    remoteVideoRef.current.srcObject = null;
+                  }
+                  logWebRTCState('remote-stream-cleared', { userId });
+                }
+              }
+            } catch (error) {
+              logWebRTCState('track-ended-handler-error', { userId, error: error.message });
+            }
+          });
+        } else if (track && track.onended !== undefined) {
+          // Fallback for older browsers
+          track.onended = () => {
+            try {
+              logWebRTCState('remote-track-ended', { userId, trackId: track.id });
+              if (remoteStream && typeof remoteStream.removeTrack === 'function') {
+                remoteStream.removeTrack(track);
+                const remainingTracks = remoteStream.getTracks();
+                if (!remainingTracks || (Array.isArray(remainingTracks) && remainingTracks.length === 0)) {
+                  delete remoteStreamsRef.current[userId];
+                  if (remoteVideoRef.current) {
+                    remoteVideoRef.current.srcObject = null;
+                  }
+                }
+              }
+            } catch (error) {
+              logWebRTCState('track-ended-handler-error', { userId, error: error.message });
+            }
+          };
+        }
+        
+        // Handle track mute/unmute - with null safety
+        if (track) {
+          if (typeof track.addEventListener === 'function') {
+            track.addEventListener('mute', () => {
+              logWebRTCState('remote-track-muted', { userId, trackId: track.id, kind: track.kind });
+            });
+            track.addEventListener('unmute', () => {
+              logWebRTCState('remote-track-unmuted', { userId, trackId: track.id, kind: track.kind });
+            });
+          } else if (track.onmute !== undefined) {
+            track.onmute = () => {
+              logWebRTCState('remote-track-muted', { userId, trackId: track.id, kind: track.kind });
+            };
+            track.onunmute = () => {
+              logWebRTCState('remote-track-unmuted', { userId, trackId: track.id, kind: track.kind });
+            };
+          }
+      }
+    } catch (error) {
+        // Ultimate fallback - never let ontrack crash
+        logWebRTCState('ontrack-crash-prevented', { userId, error: error.message, stack: error.stack });
+        console.error('Critical error in ontrack handler:', error);
+      }
     };
 
     // Handle ICE candidates
@@ -758,6 +942,12 @@ const Consultation = () => {
   };
 
   const initializeTranscription = () => {
+    // Check for secure context (required for Web Speech API in production)
+    if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      console.warn('Web Speech API requires HTTPS in production');
+      return;
+    }
+    
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition =
         window.SpeechRecognition || window.webkitSpeechRecognition;
