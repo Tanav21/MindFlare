@@ -105,7 +105,13 @@ const Consultation = () => {
       socket.disconnect();
     }
     
-    const newSocket = io(import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000');
+    // Get API URL - use environment variable or detect LAN IP
+    const apiUrl = import.meta.env.VITE_API_URL?.replace('/api', '') || 
+                   import.meta.env.VITE_SOCKET_URL || 
+                   'http://localhost:5000';
+    
+    console.log('Connecting to socket:', apiUrl);
+    const newSocket = io(apiUrl);
     setSocket(newSocket);
     socketRef.current = newSocket; // Set ref for consistency
     setConnectionStatus('connecting');
@@ -491,12 +497,39 @@ const Consultation = () => {
       activeTracks: activeTracks.length
     });
     
-    // Create RTCPeerConnection with STUN servers
+    // Create RTCPeerConnection with STUN and TURN servers for cross-device connectivity
+    const iceServers = [
+      // STUN servers for NAT traversal
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+    ];
+    
+    // Add TURN server if configured (required for cross-network connections)
+    const turnServer = import.meta.env.VITE_TURN_SERVER;
+    const turnUsername = import.meta.env.VITE_TURN_USERNAME;
+    const turnCredential = import.meta.env.VITE_TURN_CREDENTIAL;
+    
+    if (turnServer) {
+      iceServers.push({
+        urls: turnServer,
+        username: turnUsername,
+        credential: turnCredential,
+      });
+      logWebRTCState('turn-server-configured', { userId, turnServer });
+    } else {
+      // Free public TURN servers (may have rate limits)
+      iceServers.push(
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+      );
+      logWebRTCState('using-public-turn-servers', { userId });
+    }
+    
     const peerConnection = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ],
+      iceServers: iceServers,
+      iceCandidatePoolSize: 10, // Pre-gather candidates for faster connection
     });
 
     // Initialize ICE candidate queue for this peer
