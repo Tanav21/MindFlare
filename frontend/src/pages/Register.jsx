@@ -3,21 +3,25 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Register.css';
 
+// Define initial state for resetting
+const initialState = {
+  email: '',
+  password: '',
+  firstName: '',
+  lastName: '',
+  phone: '',
+  dateOfBirth: '',
+  medicalHistory: '', // ✅ NEW FIELD
+  specialization: '',
+  licenseNumber: '',
+  consultationFee: '',
+  bio: '',
+  experience: '',
+};
+
 const Register = () => {
   const [userType, setUserType] = useState('patient');
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    firstName: '',
-    lastName: '',
-    phone: '',
-    dateOfBirth: '',
-    specialization: '',
-    licenseNumber: '',
-    consultationFee: '',
-    bio: '',
-    experience: '',
-  });
+  const [formData, setFormData] = useState(initialState);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { registerPatient, registerDoctor } = useAuth();
@@ -28,6 +32,11 @@ const Register = () => {
       ...formData,
       [e.target.name]: e.target.value,
     });
+  };
+
+  const handleReset = () => {
+    setFormData(initialState);
+    setError('');
   };
 
   const handleSubmit = async (e) => {
@@ -44,6 +53,7 @@ const Register = () => {
           lastName: formData.lastName,
           phone: formData.phone,
           dateOfBirth: formData.dateOfBirth,
+          medicalHistory: formData.medicalHistory, // ✅ SENT
         });
       } else {
         await registerDoctor({
@@ -70,7 +80,12 @@ const Register = () => {
   return (
     <div className="register-container">
       <div className="register-card">
+
+        {/* Registration Icon */}
+        <div className="register-icon">👤</div>
+
         <h1>Create Account</h1>
+
         <div className="user-type-selector">
           <button
             type="button"
@@ -87,7 +102,9 @@ const Register = () => {
             Doctor
           </button>
         </div>
+
         <form onSubmit={handleSubmit}>
+          {/* First + Last Name */}
           <div className="form-row">
             <div className="form-group">
               <label htmlFor="firstName">First Name</label>
@@ -100,6 +117,7 @@ const Register = () => {
                 required
               />
             </div>
+
             <div className="form-group">
               <label htmlFor="lastName">Last Name</label>
               <input
@@ -112,17 +130,35 @@ const Register = () => {
               />
             </div>
           </div>
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              type="email"
-              id="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-            />
+
+          {/* Email + Phone */}
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="email">Email</label>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="phone">Phone</label>
+              <input
+                type="tel"
+                id="phone"
+                name="phone"
+                value={formData.phone}
+                onChange={handleChange}
+                required
+              />
+            </div>
           </div>
+
+          {/* Password */}
           <div className="form-group">
             <label htmlFor="password">Password</label>
             <input
@@ -135,30 +171,38 @@ const Register = () => {
               minLength={6}
             />
           </div>
-          <div className="form-group">
-            <label htmlFor="phone">Phone</label>
-            <input
-              type="tel"
-              id="phone"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              required
-            />
-          </div>
+
+          {/* Patient Fields */}
           {userType === 'patient' && (
-            <div className="form-group">
-              <label htmlFor="dateOfBirth">Date of Birth</label>
-              <input
-                type="date"
-                id="dateOfBirth"
-                name="dateOfBirth"
-                value={formData.dateOfBirth}
-                onChange={handleChange}
-                required
-              />
-            </div>
+            <>
+              <div className="form-group">
+                <label htmlFor="dateOfBirth">Date of Birth</label>
+                <input
+                  type="date"
+                  id="dateOfBirth"
+                  name="dateOfBirth"
+                  value={formData.dateOfBirth}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              {/* ✅ Medical History */}
+              <div className="form-group">
+                <label htmlFor="medicalHistory">Medical History</label>
+                <textarea
+                  id="medicalHistory"
+                  name="medicalHistory"
+                  value={formData.medicalHistory}
+                  onChange={handleChange}
+                  rows="4"
+                  placeholder="Any past illnesses, allergies, medications, surgeries..."
+                />
+              </div>
+            </>
           )}
+
+          {/* Doctor Fields */}
           {userType === 'doctor' && (
             <>
               <div className="form-group">
@@ -189,6 +233,7 @@ const Register = () => {
                   <option value="Emergency Medicine">Emergency Medicine</option>
                 </select>
               </div>
+
               <div className="form-group">
                 <label htmlFor="licenseNumber">License Number</label>
                 <input
@@ -200,6 +245,7 @@ const Register = () => {
                   required
                 />
               </div>
+
               <div className="form-group">
                 <label htmlFor="consultationFee">Consultation Fee ($)</label>
                 <input
@@ -213,6 +259,7 @@ const Register = () => {
                   step="0.01"
                 />
               </div>
+
               <div className="form-group">
                 <label htmlFor="experience">Years of Experience</label>
                 <input
@@ -224,6 +271,7 @@ const Register = () => {
                   min="0"
                 />
               </div>
+
               <div className="form-group">
                 <label htmlFor="bio">Bio</label>
                 <textarea
@@ -236,11 +284,28 @@ const Register = () => {
               </div>
             </>
           )}
+
           {error && <div className="error-message">{error}</div>}
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Registering...' : 'Register'}
-          </button>
+
+          <div className="form-actions">
+            <button
+              type="button"
+              className="btn-reset"
+              onClick={handleReset}
+              disabled={loading}
+            >
+              Reset
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={loading}
+            >
+              {loading ? 'Registering...' : 'Register'}
+            </button>
+          </div>
         </form>
+
         <p className="login-link">
           Already have an account? <Link to="/login">Login here</Link>
         </p>

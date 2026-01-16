@@ -38,7 +38,14 @@ const Login = () => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>Telehealth Login</h1>
+
+        {/* 🔐 Login Icon */}
+        <div className="login-icon">
+          🔐
+        </div>
+
+        <h1>Welcome Back</h1>
+
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="email">Email</label>
@@ -51,6 +58,7 @@ const Login = () => {
               required
             />
           </div>
+
           <div className="form-group">
             <label htmlFor="password">Password</label>
             <input
@@ -62,13 +70,16 @@ const Login = () => {
               required
             />
           </div>
+
           {error && <div className="error-message">{error}</div>}
+
           <button type="submit" disabled={loading} className="btn-primary">
             {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
+
         <p className="register-link">
-          Don't have an account? <Link to="/register">Register here</Link>
+          Don&apos;t have an account? <Link to="/register">Register here</Link>
         </p>
       </div>
     </div>
