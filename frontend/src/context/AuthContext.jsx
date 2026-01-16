@@ -26,13 +26,28 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const fetchUser = async () => {
+    let timeoutId;
     try {
-      const response = await api.get('/auth/me');
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const response = await api.get('/auth/me', { signal: controller.signal });
+      if (timeoutId) clearTimeout(timeoutId);
+      
       setUser(response.data.user);
       setProfile(response.data.profile);
     } catch (error) {
-      console.error('Error fetching user:', error);
+      if (timeoutId) clearTimeout(timeoutId);
+      if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
+        console.error('Request timeout - backend may not be running on', import.meta.env.VITE_API_URL || 'http://localhost:5000/api');
+      } else {
+        console.error('Error fetching user:', error);
+      }
+      // Clear invalid token
       localStorage.removeItem('token');
+      setUser(null);
+      setProfile(null);
     } finally {
       setLoading(false);
     }
