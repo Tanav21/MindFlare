@@ -82,7 +82,28 @@
   color: #c33;
   padding: 12px;
   border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #fcc;
+}
+
+.error-message h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+}
+
+.error-message ul {
+  margin: 10px 0;
+  padding-left: 20px;
+}
+
+.processing-message {
+  background: #e3f2fd;
+  color: #1976d2;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 20px;
   text-align: center;
+  font-weight: 500;
 }
 
 .btn-primary {

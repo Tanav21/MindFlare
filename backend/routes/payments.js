@@ -1,206 +1,273 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { Client, Environment } = require('square');
-const { auth, requireRole } = require('../middleware/auth');
-const Appointment = require('../models/Appointment');
-const Patient = require('../models/Patient');
+const { Client, Environment } = require("square");
+const { auth, requireRole } = require("../middleware/auth");
+const Appointment = require("../models/Appointment");
+const Patient = require("../models/Patient");
 
-// Initialize Square client
+/* ---------------------------------------
+   Square Client Initialization
+---------------------------------------- */
 const squareClient = new Client({
   accessToken: process.env.SQUARE_ACCESS_TOKEN,
-  environment: process.env.SQUARE_ENVIRONMENT === 'production' 
-    ? Environment.Production 
-    : Environment.Sandbox,
+  environment:
+    process.env.SQUARE_ENVIRONMENT === "production"
+      ? Environment.Production
+      : Environment.Sandbox,
 });
 
-// @route   POST /api/payments/create-payment
-// @desc    Create payment for appointment
-// @access  Private (Patient)
-router.post('/create-payment', auth, requireRole('patient'), async (req, res) => {
-  try {
-    const { appointmentId, sourceId, verificationToken } = req.body;
+/* ---------------------------------------
+   Helper: Safe Number Conversion
+---------------------------------------- */
+const toNumber = (value) => {
+  if (value === null || value === undefined) return null;
+  return Number(value.toString());
+};
 
-    const appointment = await Appointment.findById(appointmentId);
-    if (!appointment) {
-      return res.status(404).json({ message: 'Appointment not found' });
-    }
+/* ---------------------------------------
+   POST /api/payments/process-payment
+---------------------------------------- */
+router.post(
+  "/process-payment",
+  auth,
+  requireRole("patient"),
+  async (req, res) => {
+    try {
+      const { appointmentId, cardData } = req.body;
 
-    const patient = await Patient.findOne({ userId: req.user.userId });
-    if (appointment.patientId.toString() !== patient._id.toString()) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
+      if (!appointmentId || !cardData?.sourceId) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing required payment information",
+        });
+      }
 
-    if (appointment.paymentStatus === 'paid') {
-      return res.status(400).json({ message: 'Payment already completed' });
-    }
+      /* ---------------------------------------
+         Fetch Appointment & Patient
+      ---------------------------------------- */
+      const appointment = await Appointment.findById(appointmentId).populate(
+        "doctorId",
+        "firstName lastName"
+      );
 
-    // Convert amount to cents (Square uses cents)
-    const amount = Math.round(appointment.amount * 100);
+      if (!appointment) {
+        return res.status(404).json({
+          success: false,
+          message: "Appointment not found",
+        });
+      }
 
-    // Create payment request
-    const requestBody = {
-      sourceId: sourceId,
-      idempotencyKey: `${appointmentId}-${Date.now()}`,
-      amountMoney: {
-        amount: amount,
-        currency: 'USD',
-      },
-      verificationToken: verificationToken,
-      note: `Payment for appointment ${appointmentId}`,
-    };
+      const patient = await Patient.findOne({ userId: req.user.userId });
+      if (!patient) {
+        return res.status(404).json({
+          success: false,
+          message: "Patient profile not found",
+        });
+      }
 
-    const { result, statusCode } = await squareClient.paymentsApi.createPayment(requestBody);
+      if (appointment.patientId.toString() !== patient._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized appointment access",
+        });
+      }
 
-    if (statusCode !== 200 || result.payment?.status !== 'COMPLETED') {
-      return res.status(400).json({ 
-        message: 'Payment failed', 
-        error: result.errors || 'Unknown error' 
-      });
-    }
+      if (appointment.paymentStatus === "paid") {
+        return res.status(400).json({
+          success: false,
+          message: "Payment already completed",
+        });
+      }
 
-    // Update appointment with payment ID
-    appointment.paymentIntentId = result.payment.id;
-    appointment.paymentStatus = 'paid';
-    appointment.status = 'confirmed';
-    await appointment.save();
+      if (
+        !process.env.SQUARE_ACCESS_TOKEN ||
+        !process.env.SQUARE_LOCATION_ID
+      ) {
+        return res.status(500).json({
+          success: false,
+          message: "Square payment gateway not configured",
+        });
+      }
 
-    res.json({
-      message: 'Payment completed successfully',
-      payment: {
-        id: result.payment.id,
+      /* ---------------------------------------
+         Amount Conversion (BigInt Safe)
+      ---------------------------------------- */
+      const amountInDollars = toNumber(appointment.amount);
+
+      if (!amountInDollars || amountInDollars <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment amount",
+        });
+      }
+
+      // Square requires amount in cents (NUMBER)
+      const amountInCents = Math.round(amountInDollars * 100);
+
+      /* ---------------------------------------
+         Create Square Payment
+      ---------------------------------------- */
+      const paymentRequest = {
+        sourceId: cardData.sourceId,
+        locationId: process.env.SQUARE_LOCATION_ID,
+        amountMoney: {
+          amount: amountInCents,
+          currency: "USD",
+        },
+        idempotencyKey: `${appointmentId}-${Date.now()}`,
+        note: `Telehealth Appointment - ${appointmentId}`,
+      };
+
+      if (cardData.verificationToken) {
+        paymentRequest.verificationToken = cardData.verificationToken;
+      }
+
+      const { result, statusCode } =
+        await squareClient.paymentsApi.createPayment(paymentRequest);
+
+      if (statusCode !== 200 || result.errors) {
+        const errors = result.errors || [];
+        return res.status(400).json({
+          success: false,
+          message: "Payment failed",
+          error: errors.map((e) => e.detail || e.code).join(", "),
+        });
+      }
+
+      if (!result.payment) {
+        return res.status(400).json({
+          success: false,
+          message: "No payment returned from Square",
+        });
+      }
+
+      /* ---------------------------------------
+         Save Payment Result
+      ---------------------------------------- */
+      appointment.paymentIntentId = result.payment.id;
+
+      if (result.payment.status === "COMPLETED") {
+        appointment.paymentStatus = "paid";
+        appointment.status = "confirmed";
+        await appointment.save();
+
+        return res.json({
+          success: true,
+          message: "Payment completed successfully",
+          payment: {
+            id: result.payment.id,
+            status: result.payment.status,
+            amount:
+              toNumber(result.payment.amountMoney.amount) / 100,
+            currency: result.payment.amountMoney.currency,
+          },
+          appointment: {
+            id: appointment._id,
+            status: appointment.status,
+            paymentStatus: appointment.paymentStatus,
+          },
+        });
+      }
+
+      if (result.payment.status === "APPROVED") {
+        appointment.paymentStatus = "pending";
+        await appointment.save();
+
+        return res.json({
+          success: true,
+          message: "Payment approved and processing",
+          payment: {
+            id: result.payment.id,
+            status: result.payment.status,
+          },
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: "Payment not completed",
         status: result.payment.status,
-      },
-      appointment,
-    });
-  } catch (error) {
-    console.error('Square payment error:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message || 'Payment processing failed' 
-    });
-  }
-});
+      });
+    } catch (error) {
+      console.error("Payment Error:", error);
 
-// @route   POST /api/payments/process-payment
-// @desc    Process payment with card details (server-side)
-// @access  Private (Patient)
-router.post('/process-payment', auth, requireRole('patient'), async (req, res) => {
-  try {
-    const { appointmentId, cardData } = req.body;
+      let errorMessage = "Payment processing failed";
 
-    const appointment = await Appointment.findById(appointmentId);
-    if (!appointment) {
-      return res.status(404).json({ message: 'Appointment not found' });
-    }
+      if (error.response?.body?.errors) {
+        errorMessage = error.response.body.errors
+          .map((e) => e.detail || e.code)
+          .join(", ");
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
 
-    const patient = await Patient.findOne({ userId: req.user.userId });
-    if (appointment.patientId.toString() !== patient._id.toString()) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-
-    if (appointment.paymentStatus === 'paid') {
-      return res.status(400).json({ message: 'Payment already completed' });
-    }
-
-    // Convert amount to cents
-    const amount = Math.round(appointment.amount * 100);
-
-    // Create card payment
-    const requestBody = {
-      sourceId: cardData.sourceId,
-      idempotencyKey: `${appointmentId}-${Date.now()}`,
-      amountMoney: {
-        amount: amount,
-        currency: 'USD',
-      },
-      locationId: process.env.SQUARE_LOCATION_ID,
-      verificationToken: cardData.verificationToken,
-      note: `Payment for appointment ${appointmentId}`,
-    };
-
-    const { result, statusCode } = await squareClient.paymentsApi.createPayment(requestBody);
-
-    if (statusCode !== 200) {
-      return res.status(400).json({ 
-        message: 'Payment failed', 
-        errors: result.errors || 'Unknown error' 
+      return res.status(500).json({
+        success: false,
+        message: "Server error during payment processing",
+        error: errorMessage,
       });
     }
-
-    // Update appointment
-    appointment.paymentIntentId = result.payment?.id;
-    
-    if (result.payment?.status === 'COMPLETED') {
-      appointment.paymentStatus = 'paid';
-      appointment.status = 'confirmed';
-    }
-    
-    await appointment.save();
-
-    res.json({
-      success: result.payment?.status === 'COMPLETED',
-      payment: result.payment,
-      appointment,
-    });
-  } catch (error) {
-    console.error('Square payment error:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message || 'Payment processing failed' 
-    });
   }
-});
+);
 
-// @route   GET /api/payments/appointment/:appointmentId
-// @desc    Get payment details for appointment
-// @access  Private (Patient)
-router.get('/appointment/:appointmentId', auth, requireRole('patient'), async (req, res) => {
-  try {
-    const appointment = await Appointment.findById(req.params.appointmentId);
-    if (!appointment) {
-      return res.status(404).json({ message: 'Appointment not found' });
+/* ---------------------------------------
+   GET /api/payments/appointment/:id
+---------------------------------------- */
+router.get(
+  "/appointment/:appointmentId",
+  auth,
+  requireRole("patient"),
+  async (req, res) => {
+    try {
+      const appointment = await Appointment.findById(
+        req.params.appointmentId
+      );
+
+      if (!appointment) {
+        return res.status(404).json({ message: "Appointment not found" });
+      }
+
+      const patient = await Patient.findOne({ userId: req.user.userId });
+
+      if (appointment.patientId.toString() !== patient._id.toString()) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      res.json({
+        amount: toNumber(appointment.amount),
+        paymentStatus: appointment.paymentStatus,
+        paymentIntentId: appointment.paymentIntentId,
+      });
+    } catch (error) {
+      res.status(500).json({
+        message: "Server error",
+        error: error.message,
+      });
     }
-
-    const patient = await Patient.findOne({ userId: req.user.userId });
-    if (appointment.patientId.toString() !== patient._id.toString()) {
-      return res.status(403).json({ message: 'Unauthorized' });
-    }
-
-    res.json({
-      amount: appointment.amount,
-      paymentStatus: appointment.paymentStatus,
-      paymentIntentId: appointment.paymentIntentId,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error', error: error.message });
   }
-});
+);
 
-// @route   POST /api/payments/webhook
-// @desc    Square webhook handler
-// @access  Public (Square)
-router.post('/webhook', express.json(), async (req, res) => {
+/* ---------------------------------------
+   POST /api/payments/webhook
+---------------------------------------- */
+router.post("/webhook", express.json(), async (req, res) => {
   try {
-    const signature = req.headers['x-square-signature'];
-    const webhookSecret = process.env.SQUARE_WEBHOOK_SECRET;
-
-    // Verify webhook signature (Square provides signature verification)
-    // For production, implement proper signature verification
-    
     const event = req.body;
-    
-    if (event.type === 'payment.updated' && event.data?.object?.payment) {
+
+    if (
+      event.type === "payment.updated" &&
+      event.data?.object?.payment
+    ) {
       const payment = event.data.object.payment;
-      
-      if (payment.status === 'COMPLETED') {
+
+      if (payment.status === "COMPLETED") {
         const appointment = await Appointment.findOne({
           paymentIntentId: payment.id,
         });
 
         if (appointment) {
-          appointment.paymentStatus = 'paid';
-          appointment.status = 'confirmed';
+          appointment.paymentStatus = "paid";
+          appointment.status = "confirmed";
           await appointment.save();
         }
       }
@@ -208,8 +275,7 @@ router.post('/webhook', express.json(), async (req, res) => {
 
     res.json({ received: true });
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(400).json({ error: 'Webhook processing failed' });
+    res.status(400).json({ error: "Webhook processing failed" });
   }
 });
 
