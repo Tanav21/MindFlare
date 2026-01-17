@@ -258,14 +258,24 @@
   font-size: 18px;
 }
 
+
 .label-with-icon {
-  display: flex;
-  align-items: center;
+  display: flex;             
+  flex-direction: row;      
+  align-items: center;       
   gap: 8px;
   font-weight: 600;
   color: #374151;
   font-size: 15px;
+  margin-bottom: 10px;
+  width: fit-content;         
 }
+
+.label-with-icon svg {
+  display: inline-block;      
+  vertical-align: middle;
+}
+
 
 .label-icon {
   color: #6f7bf7;
