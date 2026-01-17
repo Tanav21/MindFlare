@@ -199,7 +199,7 @@ const BookAppointment = () => {
                 {loading ? "Booking..." : "Proceed to Payment"}
               </button>
 
-              <p className="trust-text">🔒 Secure & HIPAA Compliant</p>
+              {/* <p className="trust-text">🔒 Secure & HIPAA Compliant</p> */}
             </div>
           )}
         </div>

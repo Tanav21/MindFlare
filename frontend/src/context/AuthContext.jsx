@@ -61,6 +61,24 @@ export const AuthProvider = ({ children }) => {
     return response.data;
   };
 
+  const loginWithGoogle = async (token, role) => {
+    // Validate token before sending
+    if (!token || typeof token !== 'string') {
+      throw new Error('Invalid token: must be a string');
+    }
+
+    // Validate it looks like a JWT
+    if (!token.includes('.') || token.split('.').length !== 3) {
+      throw new Error('Invalid token format: expected a JWT ID token');
+    }
+
+    const response = await api.post('/auth/google', { token, role });
+    localStorage.setItem('token', response.data.token);
+    setUser(response.data.user);
+    setProfile(response.data.profile);
+    return response.data;
+  };
+
   const registerPatient = async (userData) => {
     const response = await api.post('/auth/register/patient', userData);
     localStorage.setItem('token', response.data.token);
@@ -90,6 +108,7 @@ export const AuthProvider = ({ children }) => {
         profile,
         loading,
         login,
+        loginWithGoogle,
         registerPatient,
         registerDoctor,
         logout,

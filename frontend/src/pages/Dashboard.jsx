@@ -11,14 +11,18 @@ import {
   FaCalendarAlt,
   FaVideo,
   FaMoneyBillWave,
-  FaCalendarTimes
+  FaCalendarTimes,
+  FaInfoCircle
 } from 'react-icons/fa';
+
+const ITEMS_PER_PAGE = 12;
 
 const Dashboard = () => {
   const { user, profile, logout } = useAuth();
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     fetchAppointments();
@@ -43,6 +47,14 @@ const Dashboard = () => {
   if (loading) {
     return <div className="loading">Loading...</div>;
   }
+
+  /* PAGINATION */
+  const totalPages = Math.ceil(appointments.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedAppointments = appointments.slice(
+    startIndex,
+    startIndex + ITEMS_PER_PAGE
+  );
 
   return (
     <div className="dashboard">
@@ -77,13 +89,13 @@ const Dashboard = () => {
             </div>
 
             <div className="appointments-grid">
-              {appointments.length === 0 ? (
+              {paginatedAppointments.length === 0 ? (
                 <div className="empty-state">
                   <FaCalendarTimes size={40} />
                   <p>No appointments yet. Book your first consultation!</p>
                 </div>
               ) : (
-                appointments.map((appointment) => (
+                paginatedAppointments.map((appointment) => (
                   <div key={appointment._id} className="appointment-card">
                     <h3>
                       Dr. {appointment.doctorId?.firstName}{' '}
@@ -96,16 +108,18 @@ const Dashboard = () => {
 
                     <p className="date">
                       <FaCalendarAlt />{' '}
-                      {new Date(
-                        appointment.appointmentDate
-                      ).toLocaleString()}
+                      {new Date(appointment.appointmentDate).toLocaleString()}
                     </p>
 
-                    {/* ✅ STATUS TEXT UPDATED HERE */}
-                    <p className={`status status-${appointment.status}`}>
-                      Status:{' '}
-                      {appointment.status.charAt(0).toUpperCase() +
-                        appointment.status.slice(1)}
+                    {/* ✅ STATUS UPDATED (ICON + TEXT OUTSIDE, PILL ONLY VALUE) */}
+                    <p className="date">
+                      <FaInfoCircle /> Status:
+                      <span
+                        className={`status status-${appointment.status}`}
+                        style={{ marginLeft: 8 }}
+                      >
+                        {appointment.status}
+                      </span>
                     </p>
 
                     <p className="payment-status">
@@ -120,7 +134,7 @@ const Dashboard = () => {
                         }
                         className="btn-secondary"
                       >
-                        <FaVideo style={{ marginRight: 8 }} />
+                        <FaVideo />
                         Start Consultation
                       </button>
                     )}
@@ -139,35 +153,35 @@ const Dashboard = () => {
             </div>
 
             <div className="appointments-grid">
-              {appointments.length === 0 ? (
+              {paginatedAppointments.length === 0 ? (
                 <div className="empty-state">
                   <FaCalendarTimes size={40} />
                   <p>No appointments scheduled yet.</p>
                 </div>
               ) : (
-                appointments.map((appointment) => (
+                paginatedAppointments.map((appointment) => (
                   <div key={appointment._id} className="appointment-card">
                     <h3>
                       {appointment.patientId?.firstName}{' '}
                       {appointment.patientId?.lastName}
                     </h3>
 
-                    <p className="specialty">
-                      {appointment.specialty}
-                    </p>
+                    <p className="specialty">{appointment.specialty}</p>
 
                     <p className="date">
                       <FaCalendarAlt />{' '}
-                      {new Date(
-                        appointment.appointmentDate
-                      ).toLocaleString()}
+                      {new Date(appointment.appointmentDate).toLocaleString()}
                     </p>
 
-                    {/* ✅ STATUS TEXT UPDATED HERE */}
-                    <p className={`status status-${appointment.status}`}>
-                      Status:{' '}
-                      {appointment.status.charAt(0).toUpperCase() +
-                        appointment.status.slice(1)}
+                    {/* ✅ STATUS UPDATED HERE TOO */}
+                    <p className="date">
+                      <FaInfoCircle /> Status:
+                      <span
+                        className={`status status-${appointment.status}`}
+                        style={{ marginLeft: 8 }}
+                      >
+                        {appointment.status}
+                      </span>
                     </p>
 
                     {appointment.status === 'confirmed' && (
@@ -177,7 +191,7 @@ const Dashboard = () => {
                         }
                         className="btn-secondary"
                       >
-                        <FaVideo style={{ marginRight: 8 }} />
+                        <FaVideo />
                         Start Consultation
                       </button>
                     )}
@@ -186,6 +200,41 @@ const Dashboard = () => {
               )}
             </div>
           </>
+        )}
+
+        {/* PAGINATION */}
+        {totalPages > 1 && (
+          <div className="pagination-container">
+            <button
+              className="pagination-btn"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => p - 1)}
+            >
+              ‹ Prev
+            </button>
+
+            <div className="pagination-pages">
+              {[...Array(totalPages)].map((_, i) => (
+                <button
+                  key={i}
+                  className={`pagination-page ${
+                    currentPage === i + 1 ? 'active' : ''
+                  }`}
+                  onClick={() => setCurrentPage(i + 1)}
+                >
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+
+            <button
+              className="pagination-btn"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => p + 1)}
+            >
+              Next ›
+            </button>
+          </div>
         )}
       </div>
     </div>
