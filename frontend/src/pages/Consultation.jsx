@@ -1680,29 +1680,45 @@ const Consultation = () => {
           <div className="chat-section">
             <h3>Chat</h3>
             <div className="messages-container">
-              {messages.map((msg, idx) => (
-                <div
-                  key={msg._id || `msg-${idx}-${msg.timestamp}`}
-                  className={`message ${
-                    msg.senderRole === user.role ? "own" : "other"
-                  }`}
-                >
-                  <div className="message-header">
-                    <strong>
-                      {msg.senderRole === "patient" ? "Patient" : "Doctor"}
-                    </strong>
-                    <span className="timestamp">
-                      {new Date(msg.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
+  {messages.map((msg, idx) => (
+    <div
+      key={msg._id || `msg-${idx}-${msg.timestamp}`}
+      className={`message ${
+        msg.senderRole === user.role ? "own" : "other"
+      }`}
+    >
+      <div className="message-header">
+        <strong>
+          {msg.senderRole === "patient" ? "Patient" : "Doctor"}
+        </strong>
+        <span className="timestamp">
+          {new Date(msg.timestamp).toLocaleTimeString()}
+        </span>
+      </div>
 
-                  {/* ✅ MESSAGE BODY (THIS WAS MISSING) */}
-                  <div className="message-text">{msg.message}</div>
-                </div>
-              ))}
+      {/* MESSAGE TEXT */}
+      {msg.message && (
+        <div className="message-text">{msg.message}</div>
+      )}
 
-              <div ref={messagesEndRef} />
-            </div>
+      {/* FILE LINK (USING fileUrl & fileName) */}
+      {msg.file && msg.file.fileUrl && (
+        <div className="message-text">
+          <a
+        href={`${import.meta.env.VITE_API_URL.replace("/api", "")}${msg.file.fileUrl}`}
+        target="_blank"
+        rel="noopener noreferrer"
+         >
+  📎 {msg.file.fileName}
+</a>
+        </div>
+      )}
+    </div>
+  ))}
+
+  <div ref={messagesEndRef} />
+</div>
+
             <div className="chat-input">
               <input
                 type="text"

@@ -7,6 +7,8 @@
   padding: 20px;
 }
 
+
+
 .login-card {
   background: white;
   border-radius: 12px;
@@ -109,3 +111,27 @@
   box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
 }
 
+
+.divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 0;
+  position: relative;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background-color: #ddd;
+}
+
+.divider span {
+  margin: 0 12px;
+  font-size: 14px;
+  color: #777;
+  background: #fff; /* match card background */
+  padding: 0 8px;
+}
