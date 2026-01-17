@@ -28,7 +28,10 @@ const Consultation = () => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const transcriptionEndRef = useRef(null);
   const recognitionRef = useRef(null);
+  const isTranscribingRef = useRef(false); // Use ref to avoid stale closures in event handlers
+  const lastTranscriptionTextRef = useRef(''); // Prevent duplicate rapid submissions
   const remoteStreamsRef = useRef({}); // userId -> MediaStream (for handling multiple tracks)
   const peersRef = useRef({});
   const iceCandidateQueueRef = useRef({}); // userId -> array of candidates
@@ -90,7 +93,21 @@ const Consultation = () => {
       setConsultation(response.data.consultation);
       if (response.data.consultation) {
         setMessages(response.data.consultation.chatMessages || []);
-        setTranscription(response.data.consultation.transcription || []);
+        // Load existing transcription from database with proper formatting
+        const existingTranscription = (response.data.consultation.transcription || []).map(entry => ({
+          senderId: entry.senderId,
+          senderRole: entry.senderRole,
+          text: entry.text,
+          timestamp: entry.timestamp ? new Date(entry.timestamp) : new Date(),
+        }));
+        setTranscription(existingTranscription);
+        
+        // Scroll to bottom after loading
+        setTimeout(() => {
+          if (transcriptionEndRef.current) {
+            transcriptionEndRef.current.scrollIntoView({ behavior: 'auto' });
+          }
+        }, 100);
       }
     } catch (error) {
       console.error("Error fetching consultation:", error);
@@ -474,6 +491,52 @@ const Consultation = () => {
       // Update UI state
       setIsCallActive(false);
       setConnectionStatus("disconnected");
+    });
+
+    // Handle real-time transcription updates from Socket.IO
+    newSocket.on('transcription-update', (entry) => {
+      // Entry format: { senderId, senderRole, text, timestamp }
+      if (!entry || !entry.text || !entry.senderRole) {
+        return;
+      }
+
+      const transcriptionEntry = {
+        senderId: entry.senderId,
+        senderRole: entry.senderRole,
+        text: entry.text.trim(),
+        timestamp: entry.timestamp ? new Date(entry.timestamp) : new Date(),
+      };
+      
+      // Add to transcription state (both doctor and patient see all entries)
+      setTranscription((prev) => {
+        // Prevent duplicates: check if same text from same sender within 3 seconds
+        const isDuplicate = prev.some((existing) => {
+          const timeDiff = Math.abs(
+            new Date(existing.timestamp) - transcriptionEntry.timestamp
+          );
+          return (
+            existing.text === transcriptionEntry.text &&
+            existing.senderRole === transcriptionEntry.senderRole &&
+            timeDiff < 3000
+          );
+        });
+
+        if (isDuplicate) {
+          console.log('[Transcription] Duplicate entry ignored:', transcriptionEntry.text.substring(0, 30));
+          return prev;
+        }
+
+        const updated = [...prev, transcriptionEntry];
+        
+        // Auto-scroll to bottom when new transcription arrives
+        setTimeout(() => {
+          if (transcriptionEndRef.current) {
+            transcriptionEndRef.current.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 100);
+        
+        return updated;
+      });
     });
 
     newSocket.on("disconnect", () => {
@@ -1188,69 +1251,157 @@ const Consultation = () => {
       return;
     }
 
-    if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+    // Check if SpeechRecognition is available
+    if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+      console.warn("Speech Recognition API not available in this browser");
+      return;
+    }
+
+    // Don't reinitialize if already initialized
+    if (recognitionRef.current) {
+      return;
+    }
+
+    try {
       const SpeechRecognition =
         window.SpeechRecognition || window.webkitSpeechRecognition;
       const recognition = new SpeechRecognition();
+      
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = "en-US";
+      recognition.maxAlternatives = 1;
 
       recognition.onresult = (event) => {
+        // Only process final results to avoid sending partial transcripts
         let finalTranscript = "";
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTranscript += transcript + " ";
+            finalTranscript += event.results[i][0].transcript + " ";
           }
         }
 
-        if (finalTranscript) {
-          const transcriptionEntry = {
-            speaker: user.role,
-            text: finalTranscript.trim(),
-            timestamp: new Date(),
-          };
-          setTranscription((prev) => [...prev, transcriptionEntry]);
-          saveTranscription(transcriptionEntry);
+        if (finalTranscript && consultation?.roomId) {
+          const text = finalTranscript.trim();
+          
+          // Prevent duplicate rapid submissions (debounce)
+          if (text === lastTranscriptionTextRef.current && text.length > 0) {
+            return;
+          }
+          lastTranscriptionTextRef.current = text;
+
+          // Send transcription via Socket.IO for real-time updates
+          const currentSocket = socketRef.current || socket;
+          if (currentSocket && currentSocket.connected) {
+            currentSocket.emit('transcription-update', {
+              roomId: consultation.roomId,
+              text: text,
+              senderRole: user.role,
+            });
+            console.log(`[Transcription] Sent: ${user.role} - ${text.substring(0, 50)}...`);
+          } else {
+            console.warn('[Transcription] Socket not connected, cannot send transcription');
+          }
         }
       };
 
       recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
+        
+        // Don't restart on certain fatal errors
+        const fatalErrors = ['not-allowed', 'aborted', 'service-not-allowed'];
+        if (fatalErrors.includes(event.error)) {
+          console.error(`[Transcription] Fatal error: ${event.error}. Stopping transcription.`);
+          if (isTranscribingRef.current) {
+            setIsTranscribing(false);
+            isTranscribingRef.current = false;
+          }
+          return;
+        }
+
+        // Auto-restart on recoverable errors
+        if (isTranscribingRef.current && recognitionRef.current) {
+          setTimeout(() => {
+            if (isTranscribingRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+                console.log('[Transcription] Restarted after error:', event.error);
+              } catch (e) {
+                console.error('[Transcription] Failed to restart after error:', e);
+              }
+            }
+          }, 1000);
+        }
+      };
+
+      recognition.onend = () => {
+        // Auto-restart if transcription is still active (use ref to avoid stale closure)
+        if (isTranscribingRef.current && recognitionRef.current) {
+          try {
+            recognitionRef.current.start();
+            console.log('[Transcription] Auto-restarted after onend');
+          } catch (e) {
+            // If start fails, it might already be starting - ignore the error
+            if (e.name !== 'InvalidStateError') {
+              console.error('[Transcription] Failed to restart on end:', e);
+            }
+          }
+        }
+      };
+
+      recognition.onstart = () => {
+        console.log('[Transcription] Recognition started');
       };
 
       recognitionRef.current = recognition;
+      console.log('[Transcription] Initialized successfully');
+    } catch (error) {
+      console.error('[Transcription] Failed to initialize:', error);
     }
   };
 
   const startTranscription = () => {
-    if (recognitionRef.current && !isTranscribing) {
-      recognitionRef.current.start();
-      setIsTranscribing(true);
+    // Ensure recognition is initialized
+    if (!recognitionRef.current) {
+      initializeTranscription();
+    }
+
+    if (recognitionRef.current && !isTranscribingRef.current) {
+      try {
+        recognitionRef.current.start();
+        setIsTranscribing(true);
+        isTranscribingRef.current = true;
+        console.log('[Transcription] Started');
+      } catch (error) {
+        console.error('[Transcription] Failed to start:', error);
+        // If already started, just update state
+        if (error.name === 'InvalidStateError') {
+          setIsTranscribing(true);
+          isTranscribingRef.current = true;
+        }
+      }
     }
   };
 
   const stopTranscription = () => {
-    if (recognitionRef.current && isTranscribing) {
-      recognitionRef.current.stop();
-      setIsTranscribing(false);
+    if (recognitionRef.current && isTranscribingRef.current) {
+      try {
+        recognitionRef.current.stop();
+        setIsTranscribing(false);
+        isTranscribingRef.current = false;
+        console.log('[Transcription] Stopped');
+      } catch (error) {
+        console.error('[Transcription] Failed to stop:', error);
+        // Update state anyway
+        setIsTranscribing(false);
+        isTranscribingRef.current = false;
+      }
     }
   };
 
-  const saveTranscription = async (entry) => {
-    try {
-      if (consultation?.roomId) {
-        await api.post(
-          `/consultations/${consultation.roomId}/transcription`,
-          entry
-        );
-      }
-    } catch (error) {
-      console.error("Error saving transcription:", error);
-    }
-  };
+  // Transcription is now saved via Socket.IO, this function is no longer needed
+  // but kept for backward compatibility if needed
 
   const sendMessage = async () => {
     const currentSocket = socketRef.current || socket;
@@ -1381,9 +1532,16 @@ const Consultation = () => {
         stream.getTracks().forEach((track) => track.stop());
         localStreamRef.current = null;
       }
+      // Stop transcription
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // Ignore errors when stopping during cleanup
+        }
       }
+      isTranscribingRef.current = false;
+      
       // Clean up all peer connections
       Object.values(peersRef.current).forEach((peerConnection) => {
         if (peerConnection && peerConnection.close) {
@@ -1567,7 +1725,7 @@ const Consultation = () => {
                   <div key={idx} className="transcription-entry">
                     <div className="transcription-header">
                       <strong>
-                        {entry.speaker === "patient" ? "Patient" : "Doctor"}
+                        {entry.senderRole === "patient" ? "Patient:" : "Doctor:"}
                       </strong>
                       <span>
                         {new Date(entry.timestamp).toLocaleTimeString()}
@@ -1577,6 +1735,7 @@ const Consultation = () => {
                   </div>
                 ))
               )}
+              <div ref={transcriptionEndRef} />
             </div>
           </div>
         </div>
