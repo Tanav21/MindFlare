@@ -33,8 +33,15 @@ const Consultation = () => {
   const transcriptionEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const isTranscribingRef = useRef(false); // Use ref to avoid stale closures in event handlers
+  const isRecognizingRef = useRef(false); // Prevent double starts
+  const shouldBeActiveRef = useRef(false); // Track if transcription should be active
   const lastTranscriptionTextRef = useRef(''); // Prevent duplicate rapid submissions
+  const lastTranscriptionTimestampRef = useRef(0); // Track last transcription time for deduplication
   const remoteStreamsRef = useRef({}); // userId -> MediaStream (for handling multiple tracks)
+  const restartTimeoutRef = useRef(null); // Cooldown timer for restarts
+  const consultationRef = useRef(consultation); // Avoid stale closure in onresult
+  const userRef = useRef(user); // Avoid stale closure in onresult
+  const socketRefForTranscription = useRef(null); // Socket ref for transcription
   const peersRef = useRef({});
   const iceCandidateQueueRef = useRef({}); // userId -> array of candidates
   const connectionStateRef = useRef({}); // Track connection states for logging
@@ -157,6 +164,7 @@ const Consultation = () => {
     });
     setSocket(newSocket);
     socketRef.current = newSocket; // Set ref for consistency
+    socketRefForTranscription.current = newSocket; // Set ref for transcription
     setConnectionStatus("connecting");
 
     newSocket.on("connect", async () => {
@@ -495,10 +503,22 @@ const Consultation = () => {
       setConnectionStatus("disconnected");
     });
 
-    // Handle real-time transcription updates from Socket.IO
+    // Handle real-time transcription updates from Socket.IO (remote users only)
     newSocket.on('transcription-update', (entry) => {
       // Entry format: { senderId, senderRole, text, timestamp }
       if (!entry || !entry.text || !entry.senderRole) {
+        return;
+      }
+
+      // C. SOCKET SYNC - Only add if from remote user (not our own)
+      // Our own transcripts are already shown via optimistic UI update
+      const isOwnMessage = entry.senderId === user.id || 
+                          (entry.senderRole === user.role && 
+                           entry.text === lastTranscriptionTextRef.current);
+
+      if (isOwnMessage) {
+        // This is our own message - already shown optimistically, skip
+        console.log('[Transcription] Ignoring own message from socket (already shown)');
         return;
       }
 
@@ -509,7 +529,7 @@ const Consultation = () => {
         timestamp: entry.timestamp ? new Date(entry.timestamp) : new Date(),
       };
       
-      // Add to transcription state (both doctor and patient see all entries)
+      // Add to transcription state (remote user's speech)
       setTranscription((prev) => {
         // Prevent duplicates: check if same text from same sender within 3 seconds
         const isDuplicate = prev.some((existing) => {
@@ -816,6 +836,11 @@ const Consultation = () => {
           username: "openrelayproject",
           credential: "openrelayproject",
         },
+        {
+          urls: "turns:openrelay.metered.ca:443?transport=tcp", // TLS transport for production
+          username: "openrelayproject",
+          credential: "openrelayproject",
+        },
         // Additional free TURN servers for fallback
         {
           urls: "turn:relay.metered.ca:80",
@@ -831,15 +856,22 @@ const Consultation = () => {
           urls: "turn:relay.metered.ca:443?transport=tcp",
           username: "openrelayproject",
           credential: "openrelayproject",
+        },
+        {
+          urls: "turns:relay.metered.ca:443?transport=tcp", // TLS transport for production
+          username: "openrelayproject",
+          credential: "openrelayproject",
         }
       );
-      logWebRTCState("using-public-turn-servers", { userId, count: 6 });
+      logWebRTCState("using-public-turn-servers", { userId, count: 7 });
     }
-
+    
     const peerConnection = new RTCPeerConnection({
       iceServers: iceServers,
       iceCandidatePoolSize: 10, // Pre-gather candidates for faster connection
       iceTransportPolicy: "all", // Use both UDP and TCP
+      bundlePolicy: "max-bundle", // Bundle RTP and RTCP together
+      rtcpMuxPolicy: "require", // Require RTCP multiplexing
     });
 
     // Initialize ICE candidate queue for this peer
@@ -968,7 +1000,11 @@ const Consultation = () => {
             Array.isArray(tracks) &&
             tracks.length > 0
           ) {
-            remoteVideoRef.current.srcObject = remoteStream;
+            // Only attach if no stream is currently attached, or if this is a new stream
+            // For multiple participants, this ensures we show the most recent stream
+            if (!remoteVideoRef.current.srcObject || remoteVideoRef.current.srcObject !== remoteStream) {
+              remoteVideoRef.current.srcObject = remoteStream;
+            }
             setIsCallActive(true);
             setConnectionStatus("connected");
 
@@ -985,6 +1021,7 @@ const Consultation = () => {
               trackCount: tracks.length,
               videoTracks: Array.isArray(videoTracks) ? videoTracks.length : 0,
               audioTracks: Array.isArray(audioTracks) ? audioTracks.length : 0,
+              totalPeers: Object.keys(peersRef.current).length,
             });
           }
         } catch (error) {
@@ -1140,7 +1177,29 @@ const Consultation = () => {
       if (state === "failed") {
         logWebRTCState("ice-connection-failed", { userId });
         setConnectionStatus("reconnecting");
-        peerConnection.restartIce();
+        // ICE restart: create new offer/answer cycle (async handler)
+        (async () => {
+          try {
+            peerConnection.restartIce();
+            // If we're the initiator, create a new offer
+            if (peerConnection.signalingState === "stable" || peerConnection.signalingState === "have-local-offer") {
+              const offer = await peerConnection.createOffer({ iceRestart: true });
+              await peerConnection.setLocalDescription(offer);
+              const currentSocket = socketRef.current || socket;
+              if (currentSocket && consultation?.roomId) {
+                currentSocket.emit("webrtc-offer", {
+                  roomId: consultation.roomId,
+                  offer: offer,
+                  to: userId,
+                });
+                logWebRTCState("ice-restart-offer-sent", { userId });
+              }
+            }
+          } catch (error) {
+            logWebRTCState("ice-restart-error", { userId, error: error.message });
+            console.error("ICE restart error:", error);
+          }
+        })();
       } else if (state === "disconnected") {
         logWebRTCState("ice-connection-disconnected", { userId });
         setConnectionStatus("disconnected");
@@ -1163,8 +1222,29 @@ const Consultation = () => {
         logWebRTCState("connection-failed", { userId });
         setConnectionStatus("failed");
         setIsCallActive(false);
-        // Try to reconnect
-        peerConnection.restartIce();
+        // Try to reconnect with ICE restart (async handler)
+        (async () => {
+          try {
+            peerConnection.restartIce();
+            // If we're the initiator, create a new offer
+            if (peerConnection.signalingState === "stable" || peerConnection.signalingState === "have-local-offer") {
+              const offer = await peerConnection.createOffer({ iceRestart: true });
+              await peerConnection.setLocalDescription(offer);
+              const currentSocket = socketRef.current || socket;
+              if (currentSocket && consultation?.roomId) {
+                currentSocket.emit("webrtc-offer", {
+                  roomId: consultation.roomId,
+                  offer: offer,
+                  to: userId,
+                });
+                logWebRTCState("connection-restart-offer-sent", { userId });
+              }
+            }
+          } catch (error) {
+            logWebRTCState("connection-restart-error", { userId, error: error.message });
+            console.error("Connection restart error:", error);
+          }
+        })();
       } else if (state === "closed") {
         logWebRTCState("connection-closed", { userId });
         setIsCallActive(false);
@@ -1275,84 +1355,177 @@ const Consultation = () => {
       recognition.maxAlternatives = 1;
 
       recognition.onresult = (event) => {
-        // Only process final results to avoid sending partial transcripts
+        // TRANSCRIPTION OUTPUT - Handle both interim and final results correctly
+        // Process all results from resultIndex to end
         let finalTranscript = "";
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + " ";
+          const result = event.results[i];
+          const transcript = result[0].transcript;
+          
+          if (result.isFinal) {
+            // Final results are complete and ready to send
+            finalTranscript += transcript + " ";
           }
+          // Note: Interim results are ignored - we only process final transcripts
         }
 
-        if (finalTranscript && consultation?.roomId) {
-          const text = finalTranscript.trim();
+        // Only process final transcripts (interim results are for UI feedback only)
+        if (finalTranscript.trim()) {
+          // Use refs to avoid stale closures
+          const currentConsultation = consultationRef.current;
+          const currentUser = userRef.current;
           
-          // Prevent duplicate rapid submissions (debounce)
-          if (text === lastTranscriptionTextRef.current && text.length > 0) {
+          if (!currentConsultation?.roomId || !currentUser) {
+            console.warn('[Transcription] Missing consultation or user, skipping');
             return;
           }
-          lastTranscriptionTextRef.current = text;
 
-          // Send transcription via Socket.IO for real-time updates
-          const currentSocket = socketRef.current || socket;
+          const text = finalTranscript.trim();
+          const now = Date.now();
+          
+          // Prevent duplicate rapid submissions (debounce within 2 seconds)
+          if (text === lastTranscriptionTextRef.current && 
+              text.length > 0 && 
+              (now - lastTranscriptionTimestampRef.current) < 2000) {
+            console.log('[Transcription] Duplicate text ignored:', text.substring(0, 30));
+            return;
+          }
+          
+          lastTranscriptionTextRef.current = text;
+          lastTranscriptionTimestampRef.current = now;
+
+          console.log(`[Transcription] Final transcript received: ${currentUser.role} - ${text.substring(0, 50)}...`);
+
+          // A. OPTIMISTIC UI UPDATE - Show immediately in local UI
+          const transcriptionEntry = {
+            senderId: currentUser.id,
+            senderRole: currentUser.role,
+            text: text,
+            timestamp: new Date(),
+          };
+
+          // Update UI immediately (optimistic update) - use functional update to avoid stale state
+          setTranscription((prev) => {
+            // Prevent duplicates in UI
+            const isDuplicate = prev.some((existing) => {
+              const timeDiff = Math.abs(
+                new Date(existing.timestamp).getTime() - transcriptionEntry.timestamp.getTime()
+              );
+              return (
+                existing.text === transcriptionEntry.text &&
+                existing.senderRole === transcriptionEntry.senderRole &&
+                timeDiff < 2000
+              );
+            });
+
+            if (isDuplicate) {
+              console.log('[Transcription] Duplicate entry in UI, skipping');
+              return prev; // Already shown
+            }
+
+            const updated = [...prev, transcriptionEntry];
+            
+            // Auto-scroll to bottom
+            setTimeout(() => {
+              if (transcriptionEndRef.current) {
+                transcriptionEndRef.current.scrollIntoView({ behavior: 'smooth' });
+              }
+            }, 100);
+            
+            return updated;
+          });
+
+          console.log(`[Transcription] Local UI updated: ${currentUser.role} - ${text.substring(0, 50)}...`);
+
+          // C. SOCKET SYNC - Emit AFTER local UI update (for remote users)
+          const currentSocket = socketRefForTranscription.current || socketRef.current || socket;
           if (currentSocket && currentSocket.connected) {
             currentSocket.emit('transcription-update', {
-              roomId: consultation.roomId,
+              roomId: currentConsultation.roomId,
               text: text,
-              senderRole: user.role,
+              senderRole: currentUser.role,
             });
-            console.log(`[Transcription] Sent: ${user.role} - ${text.substring(0, 50)}...`);
+            console.log(`[Transcription] Sent to socket: ${currentUser.role} - ${text.substring(0, 50)}...`);
           } else {
-            console.warn('[Transcription] Socket not connected, cannot send transcription');
+            console.warn('[Transcription] Socket not connected, local text shown but not synced');
           }
         }
       };
 
       recognition.onerror = (event) => {
-        console.error("Speech recognition error:", event.error);
+        console.error("[Transcription] Speech recognition error:", event.error);
         
-        // Don't restart on certain fatal errors
-        const fatalErrors = ['not-allowed', 'aborted', 'service-not-allowed'];
+        // ERROR HANDLING - Ignore "aborted" completely (it's normal when stopping/restarting)
+        // Do NOT restart from onerror - only restart from onend
+        if (event.error === 'aborted') {
+          // "aborted" is normal when recognition stops/restarts - ignore it completely
+          console.log('[Transcription] Aborted (normal, ignoring)');
+          isRecognizingRef.current = false; // Reset flag
+          return; // Do NOT restart from here
+        }
+        
+        // Fatal errors - stop transcription completely
+        const fatalErrors = ['not-allowed', 'service-not-allowed'];
         if (fatalErrors.includes(event.error)) {
           console.error(`[Transcription] Fatal error: ${event.error}. Stopping transcription.`);
+          shouldBeActiveRef.current = false;
           if (isTranscribingRef.current) {
             setIsTranscribing(false);
             isTranscribingRef.current = false;
+            isRecognizingRef.current = false;
           }
           return;
         }
 
-        // Auto-restart on recoverable errors
-        if (isTranscribingRef.current && recognitionRef.current) {
-          setTimeout(() => {
-            if (isTranscribingRef.current && recognitionRef.current) {
-              try {
-                recognitionRef.current.start();
-                console.log('[Transcription] Restarted after error:', event.error);
-              } catch (e) {
-                console.error('[Transcription] Failed to restart after error:', e);
-              }
-            }
-          }, 1000);
-        }
+        // Other recoverable errors - log but don't restart (onend will handle restart)
+        console.warn(`[Transcription] Recoverable error: ${event.error}. Will restart on onend if active.`);
+        isRecognizingRef.current = false; // Reset flag to allow restart from onend
       };
 
       recognition.onend = () => {
-        // Auto-restart if transcription is still active (use ref to avoid stale closure)
-        if (isTranscribingRef.current && recognitionRef.current) {
-          try {
-            recognitionRef.current.start();
-            console.log('[Transcription] Auto-restarted after onend');
-          } catch (e) {
-            // If start fails, it might already be starting - ignore the error
-            if (e.name !== 'InvalidStateError') {
-              console.error('[Transcription] Failed to restart on end:', e);
+        // LIFECYCLE SAFETY - Auto-restart ONLY from onend with cooldown
+        // Reset recognizing flag to allow restart
+        isRecognizingRef.current = false;
+        
+        // Clear any existing restart timeout
+        if (restartTimeoutRef.current) {
+          clearTimeout(restartTimeoutRef.current);
+          restartTimeoutRef.current = null;
+        }
+        
+        // Auto-restart if transcription should still be active
+        // Use shouldBeActiveRef to avoid stale closures
+        if (shouldBeActiveRef.current && recognitionRef.current && !isRecognizingRef.current) {
+          // Cooldown: 500-800ms delay to prevent rapid restart loops
+          const cooldown = 600; // 600ms cooldown
+          
+          restartTimeoutRef.current = setTimeout(() => {
+            // Double-check conditions before restarting (avoid stale closures)
+            if (shouldBeActiveRef.current && recognitionRef.current && !isRecognizingRef.current) {
+              try {
+                isRecognizingRef.current = true;
+                recognitionRef.current.start();
+                console.log('[Transcription] Auto-restarted after onend');
+              } catch (e) {
+                isRecognizingRef.current = false;
+                // If start fails, it might already be starting - ignore the error
+                if (e.name !== 'InvalidStateError') {
+                  console.error('[Transcription] Failed to restart on end:', e);
+                }
+              }
+            } else {
+              console.log('[Transcription] Skipping restart - not active or already recognizing');
             }
-          }
+            restartTimeoutRef.current = null;
+          }, cooldown);
+        } else {
+          console.log('[Transcription] onend - not restarting (shouldBeActive:', shouldBeActiveRef.current, ')');
         }
       };
 
       recognition.onstart = () => {
+        isRecognizingRef.current = true; // Mark as recognizing
         console.log('[Transcription] Recognition started');
       };
 
@@ -1369,35 +1542,56 @@ const Consultation = () => {
       initializeTranscription();
     }
 
-    if (recognitionRef.current && !isTranscribingRef.current) {
+    // LIFECYCLE SAFETY - Prevent double starts
+    // Check both flags to ensure we don't start while already recognizing
+    if (recognitionRef.current && !isTranscribingRef.current && !isRecognizingRef.current) {
       try {
+        shouldBeActiveRef.current = true; // Set flag first
+        isRecognizingRef.current = true; // Prevent double starts
         recognitionRef.current.start();
         setIsTranscribing(true);
         isTranscribingRef.current = true;
-        console.log('[Transcription] Started');
+        console.log('[Transcription] Started by user');
       } catch (error) {
+        isRecognizingRef.current = false;
+        shouldBeActiveRef.current = false;
         console.error('[Transcription] Failed to start:', error);
         // If already started, just update state
         if (error.name === 'InvalidStateError') {
           setIsTranscribing(true);
           isTranscribingRef.current = true;
+          isRecognizingRef.current = true;
+          shouldBeActiveRef.current = true;
         }
       }
+    } else {
+      console.log('[Transcription] Already active or recognizing, skipping start');
     }
   };
 
   const stopTranscription = () => {
+    // LIFECYCLE SAFETY - Only stop if user explicitly clicks Stop
+    // Clear restart timeout
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current);
+      restartTimeoutRef.current = null;
+    }
+    
+    shouldBeActiveRef.current = false; // Prevent auto-restart
+    
     if (recognitionRef.current && isTranscribingRef.current) {
       try {
         recognitionRef.current.stop();
         setIsTranscribing(false);
         isTranscribingRef.current = false;
-        console.log('[Transcription] Stopped');
+        isRecognizingRef.current = false; // Reset recognizing flag
+        console.log('[Transcription] Stopped by user');
       } catch (error) {
         console.error('[Transcription] Failed to stop:', error);
         // Update state anyway
         setIsTranscribing(false);
         isTranscribingRef.current = false;
+        isRecognizingRef.current = false;
       }
     }
   };
@@ -1535,6 +1729,15 @@ const Consultation = () => {
     }
   };
 
+  // Keep refs synchronized with state (avoid stale closures)
+  useEffect(() => {
+    consultationRef.current = consultation;
+  }, [consultation]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   useEffect(() => {
     fetchConsultation();
     initializeTranscription();
@@ -1555,6 +1758,14 @@ const Consultation = () => {
         }
       }
       isTranscribingRef.current = false;
+      isRecognizingRef.current = false;
+      shouldBeActiveRef.current = false;
+      
+      // Clear restart timeout
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = null;
+      }
       
       // Clean up all peer connections
       Object.values(peersRef.current).forEach((peerConnection) => {

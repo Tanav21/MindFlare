@@ -160,48 +160,57 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('user-left', { userId: socket.id });
   });
 
-  // WebRTC signaling handlers
+  // WebRTC signaling handlers - PRODUCTION: Support multiple participants
   socket.on('webrtc-offer', (data) => {
     const { roomId, offer, to } = data;
-    // Send offer to specific user if 'to' is provided, otherwise broadcast to room
+    // CRITICAL: Always use 'to' field for targeted signaling (per-peer connections)
+    // This ensures each peer connection is independent and supports N participants
     if (to) {
       io.to(to).emit('webrtc-offer', {
         offer,
         from: socket.id,
       });
+      console.log(`[${roomId}] Offer sent: ${socket.id} -> ${to}`);
     } else {
+      // Fallback: broadcast to room (for backward compatibility)
       socket.to(roomId).emit('webrtc-offer', {
         offer,
         from: socket.id,
       });
+      console.log(`[${roomId}] Offer broadcast: ${socket.id} -> room`);
     }
   });
 
   socket.on('webrtc-answer', (data) => {
     const { roomId, answer, to } = data;
-    // Send answer to specific user if 'to' is provided, otherwise broadcast to room
+    // CRITICAL: Always use 'to' field for targeted signaling
     if (to) {
       io.to(to).emit('webrtc-answer', {
         answer,
         from: socket.id,
       });
+      console.log(`[${roomId}] Answer sent: ${socket.id} -> ${to}`);
     } else {
+      // Fallback: broadcast to room
       socket.to(roomId).emit('webrtc-answer', {
         answer,
         from: socket.id,
       });
+      console.log(`[${roomId}] Answer broadcast: ${socket.id} -> room`);
     }
   });
 
   socket.on('webrtc-ice-candidate', (data) => {
     const { roomId, candidate, to } = data;
-    // Send ICE candidate to specific user if 'to' is provided, otherwise broadcast to room
+    // CRITICAL: Always use 'to' field for targeted signaling
+    // ICE candidates must be sent to specific peers, not broadcast
     if (to) {
       io.to(to).emit('webrtc-ice-candidate', {
         candidate,
         from: socket.id,
       });
     } else {
+      // Fallback: broadcast to room (less ideal but works)
       socket.to(roomId).emit('webrtc-ice-candidate', {
         candidate,
         from: socket.id,
@@ -251,8 +260,10 @@ io.on('connection', (socket) => {
         timestamp: entry.timestamp.toISOString(),
       };
       
+      // CRITICAL: Broadcast to ALL users in the room (not just sender)
+      // This ensures both doctor and patient see each other's transcripts
       io.to(roomId).emit('transcription-update', broadcastEntry);
-      console.log(`[${roomId}] Transcription saved and broadcast: ${role} - ${text.substring(0, 50)}...`);
+      console.log(`[${roomId}] Transcription saved and broadcast to room: ${role} - ${text.substring(0, 50)}...`);
     } catch (err) {
       console.error('Transcription save error:', err);
     }
