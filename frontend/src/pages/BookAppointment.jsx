@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FaUserMd, FaBriefcase, FaDollarSign, FaStar, FaCalendarAlt } from 'react-icons/fa';
-import api from '../utils/api';
-import './BookAppointment.css';
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  FaUserMd,
+  FaBriefcase,
+  FaDollarSign,
+  FaStar,
+  FaCalendarAlt,
+} from "react-icons/fa";
+import api from "../utils/api";
+import "./BookAppointment.css";
 
 const BookAppointment = () => {
   const navigate = useNavigate();
   const [specializations, setSpecializations] = useState([]);
   const [doctors, setDoctors] = useState([]);
-  const [selectedSpecialization, setSelectedSpecialization] = useState('');
+  const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState(null);
-  const [appointmentDate, setAppointmentDate] = useState('');
+  const [appointmentDate, setAppointmentDate] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetchSpecializations();
@@ -24,7 +30,7 @@ const BookAppointment = () => {
 
   const fetchSpecializations = async () => {
     try {
-      const response = await api.get('/doctors/specializations');
+      const response = await api.get("/doctors/specializations");
       setSpecializations(response.data);
     } catch (error) {
       console.error(error);
@@ -34,7 +40,7 @@ const BookAppointment = () => {
   const fetchDoctors = async () => {
     try {
       const response = await api.get(
-        `/doctors?specialization=${selectedSpecialization}&isAvailable=true`
+        `/doctors?specialization=${selectedSpecialization}&isAvailable=true`,
       );
       setDoctors(response.data);
     } catch (error) {
@@ -44,15 +50,23 @@ const BookAppointment = () => {
 
   const handleBookAppointment = async () => {
     if (!selectedDoctor || !appointmentDate) {
-      setError('Please select a doctor and appointment date');
+      setError("Please select a doctor and appointment date");
       return;
     }
 
+    const now = new Date();
+    const selectedDateTime = new Date(appointmentDate);
+    console.log(selectedDateTime, now);
+    // if (selectedDateTime.getTime() <= now.getTime()) {
+    //   setError("You cannot book an appointment in the past");
+    //   return;
+    // }  
+
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
-      const response = await api.post('/appointments', {
+      const response = await api.post("/appointments", {
         doctorId: selectedDoctor._id,
         specialty: selectedDoctor.specialization,
         appointmentDate: new Date(appointmentDate).toISOString(),
@@ -60,7 +74,7 @@ const BookAppointment = () => {
 
       navigate(`/payment/${response.data.appointment._id}`);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to book appointment');
+      setError(err.response?.data?.message || "Failed to book appointment");
     } finally {
       setLoading(false);
     }
@@ -103,7 +117,7 @@ const BookAppointment = () => {
                     <div
                       key={doctor._id}
                       className={`doctor-card ${
-                        selectedDoctor?._id === doctor._id ? 'selected' : ''
+                        selectedDoctor?._id === doctor._id ? "selected" : ""
                       }`}
                       onClick={() => setSelectedDoctor(doctor)}
                     >
@@ -114,9 +128,8 @@ const BookAppointment = () => {
 
                       <h3 className="doctor-name">
                         <FaUserMd className="doctor-icon" />
-                               Dr. {doctor.firstName} {doctor.lastName}
-                          </h3>
-
+                        Dr. {doctor.firstName} {doctor.lastName}
+                      </h3>
 
                       <p className="specialization">{doctor.specialization}</p>
 
@@ -146,7 +159,7 @@ const BookAppointment = () => {
             <div className="form-group">
               <label className="label-with-icon">
                 <FaCalendarAlt className="label-icon" />
-                 Select Date & Time
+                Select Date & Time
               </label>
 
               <input
@@ -163,17 +176,27 @@ const BookAppointment = () => {
           {selectedDoctor && appointmentDate && (
             <div className="booking-summary">
               <h3>Booking Summary</h3>
-              <p><strong>Doctor:</strong> Dr. {selectedDoctor.firstName} {selectedDoctor.lastName}</p>
-              <p><strong>Specialty:</strong> {selectedDoctor.specialization}</p>
-              <p><strong>Date & Time:</strong> {new Date(appointmentDate).toLocaleString()}</p>
-              <p><strong>Fee:</strong> ${selectedDoctor.consultationFee}</p>
+              <p>
+                <strong>Doctor:</strong> Dr. {selectedDoctor.firstName}{" "}
+                {selectedDoctor.lastName}
+              </p>
+              <p>
+                <strong>Specialty:</strong> {selectedDoctor.specialization}
+              </p>
+              <p>
+                <strong>Date & Time:</strong>{" "}
+                {new Date(appointmentDate).toLocaleString()}
+              </p>
+              <p>
+                <strong>Fee:</strong> ${selectedDoctor.consultationFee}
+              </p>
 
               <button
                 onClick={handleBookAppointment}
                 disabled={loading}
                 className="btn-primary"
               >
-                {loading ? 'Booking...' : 'Proceed to Payment'}
+                {loading ? "Booking..." : "Proceed to Payment"}
               </button>
 
               <p className="trust-text">🔒 Secure & HIPAA Compliant</p>

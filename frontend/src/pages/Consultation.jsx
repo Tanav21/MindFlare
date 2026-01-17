@@ -25,6 +25,8 @@ const Consultation = () => {
   // Refs
   const socketRef = useRef(null);
   const localStreamRef = useRef(null);
+  const fileInputRef = useRef(null);
+
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -1404,39 +1406,51 @@ const Consultation = () => {
   // but kept for backward compatibility if needed
 
   const sendMessage = async () => {
-    const currentSocket = socketRef.current || socket;
-    if (!currentSocket || !consultation) return;
+  const currentSocket = socketRef.current || socket;
+  if (!currentSocket || !consultation) return;
 
-    let fileData = null;
+  // ✅ validation
+  if (!messageInput.trim() && !selectedFile) {
+    alert("Please enter a message or select a file before sending.");
+    return;
+  }
 
-    // 1️⃣ Upload file first
-    if (selectedFile) {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
+  let fileData = null;
 
-      const res = await api.post("/upload/chat-file", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
+  // 1️⃣ Upload file first
+  if (selectedFile) {
+    const formData = new FormData();
+    formData.append("file", selectedFile);
 
-      fileData = res.data;
-      setSelectedFile(null);
+    const res = await api.post("/upload/chat-file", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
+    fileData = res.data;
+
+    // ✅ CLEAR FILE STATE + INPUT
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
+  }
 
-    // 2️⃣ Send chat message
-    const messageData = {
-      roomId: consultation.roomId,
-      senderId: user.id,
-      senderRole: user.role,
-      message: messageInput,
-      file: fileData, // ⬅️ FILE INFO
-      timestamp: new Date(),
-    };
-
-    currentSocket.emit("chat-message", messageData);
-    setMessageInput("");
+  // 2️⃣ Send chat message
+  const messageData = {
+    roomId: consultation.roomId,
+    senderId: user.id,
+    senderRole: user.role,
+    message: messageInput,
+    file: fileData,
+    timestamp: new Date(),
   };
+
+  currentSocket.emit("chat-message", messageData);
+
+  setMessageInput("");
+};
 
   const toggleVideo = () => {
     const stream = localStreamRef.current;
@@ -1699,9 +1713,11 @@ const Consultation = () => {
                 disabled={!socketRef.current && !socket}
               />
               <input
-                type="file"
-                onChange={(e) => setSelectedFile(e.target.files[0])}
-              />
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => setSelectedFile(e.target.files[0])}
+            />
+
 
               <button
                 onClick={sendMessage}
