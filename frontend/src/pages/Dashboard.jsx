@@ -132,7 +132,7 @@ const Dashboard = () => {
                         onClick={() =>
                           navigate(`/consultation/${appointment._id}`)
                         }
-                        className="btn-secondary"
+                        className="btn-secondary-consult"
                       >
                         <FaVideo />
                         Start Consultation
@@ -200,7 +200,7 @@ const Dashboard = () => {
                         onClick={() =>
                           navigate(`/consultation/${appointment._id}`)
                         }
-                        className="btn-secondary"
+                        className="btn-secondary-consult"
                       >
                         <FaVideo />
                         Start Consultation

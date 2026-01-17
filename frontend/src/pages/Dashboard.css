@@ -206,6 +206,26 @@
   box-shadow: 0 12px 32px rgba(123, 108, 246, 0.4);
 }
 
+.btn-secondary-consult{
+  width: 100%;
+  margin-top: 20px;
+  padding: 14px;
+  background: linear-gradient(135deg, #e46450, #d40303);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 700;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.btn-secondary-consult:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(233, 92, 92, 0.4);
+}
 /* EMPTY STATE */
 .empty-state {
   grid-column: 1 / -1;
