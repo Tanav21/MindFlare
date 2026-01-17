@@ -105,27 +105,27 @@ router.post('/:roomId/end', auth, async (req, res) => {
 // @route   POST /api/consultations/:roomId/transcription
 // @desc    Add transcription entry
 // @access  Private
-router.post('/:roomId/transcription', auth, async (req, res) => {
-  try {
-    const { speaker, text } = req.body;
-    const consultation = await Consultation.findOne({ roomId: req.params.roomId });
+// router.post('/:roomId/transcription', auth, async (req, res) => {
+//   try {
+//     const { speaker, text } = req.body;
+//     const consultation = await Consultation.findOne({ roomId: req.params.roomId });
 
-    if (!consultation) {
-      return res.status(404).json({ message: 'Consultation not found' });
-    }
+//     if (!consultation) {
+//       return res.status(404).json({ message: 'Consultation not found' });
+//     }
 
-    consultation.transcription.push({
-      speaker,
-      text,
-      timestamp: new Date(),
-    });
-    await consultation.save();
+//     consultation.transcription.push({
+//       speaker,
+//       text,
+//       timestamp: new Date(),
+//     });
+//     await consultation.save();
 
-    res.json({ message: 'Transcription added', consultation });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
+//     res.json({ message: 'Transcription added', consultation });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// });
 
 module.exports = router;
