@@ -1,0 +1,110 @@
+/* Page */
+.report-page {
+  min-height: 100vh;
+  background: #f3f6fb;
+  display: flex;
+  justify-content: center;
+  padding: 40px 16px;
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* Card */
+.report-card {
+  background: #ffffff;
+  max-width: 900px;
+  width: 100%;
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+  padding: 36px;
+}
+
+/* Title */
+.report-title {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 30px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 12px;
+}
+
+/* Markdown styling */
+.report-markdown h2 {
+  font-size: 22px;
+  color: #1e3a8a;
+  margin-top: 28px;
+  margin-bottom: 12px;
+}
+
+.report-markdown h3 {
+  font-size: 18px;
+  color: #1f2937;
+  margin-top: 24px;
+}
+
+.report-markdown p {
+  font-size: 15.5px;
+  line-height: 1.75;
+  color: #374151;
+  margin-bottom: 12px;
+}
+
+.report-markdown ul {
+  padding-left: 20px;
+  margin-bottom: 16px;
+}
+
+.report-markdown li {
+  margin-bottom: 6px;
+  font-size: 15px;
+}
+
+.report-markdown strong {
+  color: #111827;
+  font-weight: 600;
+}
+
+/* Section divider */
+.report-markdown hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 28px 0;
+}
+
+/* Loading */
+.report-loading {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 18px;
+  color: #2563eb;
+  font-weight: 500;
+}
+
+/* Error */
+.report-error {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 16px;
+  color: #dc2626;
+  font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .report-card {
+    padding: 22px;
+  }
+
+  .report-title {
+    font-size: 22px;
+  }
+
+  .report-markdown p {
+    font-size: 14.5px;
+  }
+}

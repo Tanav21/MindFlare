@@ -8,6 +8,7 @@ import BookAppointment from './pages/BookAppointment';
 import Payment from './pages/Payment';
 import Consultation from './pages/Consultation';
 import './App.css';
+import ConsultationReport from './pages/ConsultationReport';
 
 const AppRoutes = () => {
   const { user, loading } = useAuth();
@@ -55,6 +56,14 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <Consultation />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/consultation-report/:id"
+        element={
+          <ProtectedRoute>
+            <ConsultationReport />
           </ProtectedRoute>
         }
       />

@@ -62,6 +62,10 @@ const consultationSchema = new mongoose.Schema({
     enum: ['scheduled', 'active', 'ended'],
     default: 'scheduled',
   },
+  aiReport: {
+    type: String,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

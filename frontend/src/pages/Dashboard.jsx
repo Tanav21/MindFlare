@@ -116,7 +116,7 @@ const Dashboard = () => {
                       <FaInfoCircle /> Status:
                       <span
                         className={`status status-${appointment.status}`}
-                        style={{ marginLeft: 8 }}
+                        style={{ marginLeft: 2 }}
                       >
                         {appointment.status}
                       </span>
@@ -136,6 +136,17 @@ const Dashboard = () => {
                       >
                         <FaVideo />
                         Start Consultation
+                      </button>
+                    )}
+                    {appointment.status === 'completed' && (
+                      <button
+                        onClick={() =>
+                          navigate(`/consultation-report/${appointment._id}`)
+                        }
+                        className="btn-secondary"
+                      >
+                        <FaInfoCircle />
+                        Show Consultation Details
                       </button>
                     )}
                   </div>

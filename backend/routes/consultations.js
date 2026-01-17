@@ -128,4 +128,47 @@ router.post('/:roomId/end', auth, async (req, res) => {
 //   }
 // });
 
+
+// @route   GET /api/consultations/appointment/:appointmentId
+// @desc    Get consultation by appointment ID
+// @access  Private
+router.get('/appointment/:appointmentId', auth, async (req, res) => {
+  try {
+    const consultation = await Consultation.findOne({
+      appointmentId: req.params.appointmentId,
+    });
+
+    if (!consultation) {
+      return res.status(404).json({ message: 'Consultation not found' });
+    }
+
+    const appointment = await Appointment.findById(consultation.appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+
+    // Authorization check
+    if (req.user.role === 'patient') {
+      const patient = await Patient.findOne({ userId: req.user.userId });
+      if (!patient || appointment.patientId.toString() !== patient._id.toString()) {
+        return res.status(403).json({ message: 'Unauthorized' });
+      }
+    } else if (req.user.role === 'doctor') {
+      const doctor = await Doctor.findOne({ userId: req.user.userId });
+      if (!doctor || appointment.doctorId.toString() !== doctor._id.toString()) {
+        return res.status(403).json({ message: 'Unauthorized' });
+      }
+    }
+
+    res.json({
+      consultation,
+      appointment,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+
 module.exports = router;

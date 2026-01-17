@@ -78,6 +78,8 @@ app.use('/api/payments', require('./routes/payments'));
 app.use('/api/consultations', require('./routes/consultations'));
 app.use('/uploads', express.static('uploads'));
 app.use('/api/upload', require('./routes/upload'));
+app.use('/api/ai', require('./routes/ai'));
+
 
 
 // Health check
