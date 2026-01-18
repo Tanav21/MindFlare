@@ -158,7 +158,7 @@ const BookAppointment = () => {
 
           {selectedDoctor && (
             <div className="form-group">
-              <label className="label-with-icon" style={{display:"flex"}}>
+              <label className="label-with-icon" style={{display:"flex",gap:"2px"}}>
                 <FaCalendarAlt className="label-icon" />
                 Select Date & Time
               </label>

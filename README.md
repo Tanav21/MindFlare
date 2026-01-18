@@ -38,7 +38,6 @@ A comprehensive telehealth platform that enables remote healthcare consultations
 7. **PHI Data Security**
    - Encrypted data storage
    - Secure API endpoints
-   - HIPAA-compliant data handling
 
 ## Tech Stack
 
@@ -208,7 +207,3 @@ MindFlare/
 - Web Speech API requires HTTPS in production
 - WebRTC may require TURN/STUN servers for production deployment
 - Square test card: 4111 1111 1111 1111 (any future expiry, any CVV)
-
-## License
-
-ISC
