@@ -1,7 +1,8 @@
 # Telehealth Solution for access to Healthcare from anywhere (Use Case 2) - MERN Stack
 <h3>Team MindFlare</h3>
-<br />
+
 <h4>Demo Video : <a href="https://drive.google.com/file/d/1NJhia69FLdut2MVN-Wf1YLT5gH0qfrnJ/view?usp=sharing" target="_blank">Video Link</a></h4>
+<h4>Architecture : <a href="https://app.eraser.io/workspace/u2kWBKnTbCYu9hU1N73c" target="_blank">Architecture Link</a></h4>
 
 <h4>Problem Statement</h4>
 <p> Post pandemic, world has changed significantly. Quick access to quality, affordable and reliable healthcare from anywhere is the need of the hour. People are confined in remote locations in their homes and hence there is an urgent need to come up with a digitally enabled solution</p>
