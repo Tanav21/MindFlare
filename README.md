@@ -6,7 +6,7 @@
 <h4>Website is Live at : <a href="https://mindflare-n6vz.onrender.com" target="_blank">Website Link</a></h4>
 <h4>Figma File : <a href="https://www.figma.com/proto/4RmIAAd2n9Kz7JpezexrF3/Prasum-Dubey-s-team-library?node-id=3315-3&p=f&t=NzxCcQs7wffMxDrX-1&scaling=min-zoom&content-scaling=fixed&page-id=0%3A1&starting-point-node-id=3315%3A3&show-proto-sidebar=1" target="_blank">Figma Link</a></h4>
 <p style={{fontSize:"15px"}}><strong>Note : </strong>The Figma link is invite-only. You can check the design details in the shared <a href="https://www.loom.com/share/b7986760660647eda5151875b088f638" target="_blank">Video Link</a></p>
-
+<h4>Project Report : <a href="https://docs.google.com/document/d/1dhQ5atev6cWh3pSBXMEizyWo7wWm-scJAWUgOub2Crs/edit?tab=t.0" target="_blank">Report Link</a></h4>
 
 <h4>Problem Statement</h4>
 <p> Post pandemic, world has changed significantly. Quick access to quality, affordable and reliable healthcare from anywhere is the need of the hour. People are confined in remote locations in their homes and hence there is an urgent need to come up with a digitally enabled solution</p>
