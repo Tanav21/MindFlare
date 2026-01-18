@@ -1,4 +1,4 @@
-# Telehealth Solution - MERN Stack
+# Telehealth Solution for access to Healthcare from anywhere (Use Case 2) - MERN Stack
 
 A comprehensive telehealth platform that enables remote healthcare consultations with video calling, real-time chat, payment processing, and transcription services.
 
