@@ -190,7 +190,7 @@ const Payment = () => {
         <div className="payment-form">
           <div className="payment-amount">
             <h2>Payment Amount</h2>
-            <p className="amount">${appointment.amount}</p>
+            <p className="amount">₹ {appointment.amount}</p>
           </div>
           
           {error && (

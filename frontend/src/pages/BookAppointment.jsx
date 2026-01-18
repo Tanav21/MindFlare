@@ -4,6 +4,7 @@ import {
   FaUserMd,
   FaBriefcase,
   FaDollarSign,
+  FaRupeeSign,
   FaStar,
   FaCalendarAlt,
 } from "react-icons/fa";
@@ -140,7 +141,7 @@ const BookAppointment = () => {
                           <FaBriefcase /> {doctor.experience} yrs
                         </span>
                         <span className="fee">
-                          <FaDollarSign /> ${doctor.consultationFee}
+                          <FaRupeeSign /> INR {doctor.consultationFee}
                         </span>
                         {doctor.rating > 0 && (
                           <span>
@@ -188,7 +189,7 @@ const BookAppointment = () => {
                 {new Date(appointmentDate).toLocaleString()}
               </p>
               <p>
-                <strong>Fee:</strong> ${selectedDoctor.consultationFee}
+                <strong>Fee:</strong> INR ₹{selectedDoctor.consultationFee}
               </p>
 
               <button
