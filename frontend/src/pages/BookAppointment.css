@@ -71,6 +71,9 @@
   border: 2px solid transparent;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
   transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .doctor-card:hover {
@@ -97,33 +100,43 @@
 }
 
 .bio {
+  min-height: 48px;        /* reserve space */
+  max-height: 48px;
+  overflow: hidden;
   color: #6b7280;
-  margin: 6px 0 12px;
   font-size: 14px;
   line-height: 1.6;
+  margin: 8px 0 12px;
 }
+
 
 /* ---------- DOCTOR INFO ---------- */
 .doctor-info {
   display: flex;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: auto;
   flex-wrap: wrap;
 }
 
 .doctor-info span {
-  font-size: 13px;
-  color: #4b5563;
-  background: #f3f4f6;
+  display: inline-flex;          /* 🔥 important */
+  align-items: center;           /* vertical centering */
+  gap: 6px;
+  font-size: 12px;
   padding: 6px 10px;
+  background: #eef2ff;
+  color: #4b5563;
   border-radius: 999px;
+  line-height: 1;                /* prevents baseline shift */
 }
+
 
 .doctor-info .fee {
   background: #eef2ff;
-  color: #5a65e8;
+  color: #4f46e5;
   font-weight: 600;
 }
+
 
 /* ---------- ERROR ---------- */
 .error-message {
@@ -224,6 +237,9 @@
 .form-group label svg {
   margin-right: 6px;
   color: #6f7bf7;
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 /* ---------- EMPTY STATE ---------- */

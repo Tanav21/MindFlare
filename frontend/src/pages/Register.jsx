@@ -247,7 +247,7 @@ const Register = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="consultationFee">Consultation Fee ($)</label>
+                <label htmlFor="consultationFee">Consultation Fee (INR ₹)</label>
                 <input
                   type="number"
                   id="consultationFee"
@@ -288,14 +288,14 @@ const Register = () => {
           {error && <div className="error-message">{error}</div>}
 
           <div className="form-actions">
-            <button
+            {/* <button
               type="button"
               className="btn-reset"
               onClick={handleReset}
               disabled={loading}
             >
               Reset
-            </button>
+            </button> */}
             <button
               type="submit"
               className="btn-primary"
