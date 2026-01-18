@@ -213,6 +213,8 @@
   background: #1a1a1a;
   border-radius: 8px;
   margin-bottom: 15px;
+  max-height:294px;
+
 }
 
 .message {
