@@ -32,6 +32,7 @@ const Dashboard = () => {
     try {
       const response = await api.get('/appointments');
       setAppointments(response.data);
+      console.log(response.data)
     } catch (error) {
       console.error('Error fetching appointments:', error);
     } finally {
@@ -204,6 +205,17 @@ const Dashboard = () => {
                       >
                         <FaVideo />
                         Start Consultation
+                      </button>
+                    )}
+                     {appointment.status === 'completed' && (
+                      <button
+                        onClick={() =>
+                          navigate(`/consultation-report/${appointment._id}`)
+                        }
+                        className="btn-secondary"
+                      >
+                        <FaInfoCircle />
+                        Show Consultation Details
                       </button>
                     )}
                   </div>

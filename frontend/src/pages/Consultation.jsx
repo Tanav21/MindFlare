@@ -12,6 +12,7 @@ const Consultation = () => {
   const [consultation, setConsultation] = useState(null);
   const [appointment, setAppointment] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [medicalHistory, setMedicalHistory] = useState([]);
   const [messageInput, setMessageInput] = useState("");
   const [isVideoActive, setIsVideoActive] = useState(true);
   const [isAudioActive, setIsAudioActive] = useState(true);
@@ -100,6 +101,7 @@ const Consultation = () => {
       const response = await api.get(`/appointments/${appointmentId}`);
       setAppointment(response.data.appointment);
       setConsultation(response.data.consultation);
+      setMedicalHistory(response.data.appointment.patientId.medicalHistory)
       if (response.data.consultation) {
         setMessages(response.data.consultation.chatMessages || []);
         // Load existing transcription from database with proper formatting
@@ -1890,7 +1892,7 @@ const Consultation = () => {
         <div className="sidebar">
           <div className="chat-section">
             <h3>Chat</h3>
-            <div className="messages-container">
+            <div className="messages-container" style={{height:"350px"}}>
   {messages.map((msg, idx) => (
     <div
       key={msg._id || `msg-${idx}-${msg.timestamp}`}
@@ -1955,10 +1957,35 @@ const Consultation = () => {
               </button>
             </div>
           </div>
+         <div className="bg-black  rounded-lg p-4 mt-4" style={{backgroundColor:"#2A2A2A"}}>
+  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2" style={{color:"#F8FFFF"}}>
+    Medical Symptoms
+  </h3>
+
+  {medicalHistory.length === 0 ? (
+    <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+      Medical Symptoms is not provided by the patient.
+    </p>
+  ) : (
+    <div className="flex flex-wrap gap-2">
+      {medicalHistory.map((item, index) => (
+        <span
+          key={index}
+          className="px-3 py-1 text-sm rounded-full 
+                     bg-blue-100 text-blue-800 
+                     dark:bg-blue-900 dark:text-blue-200"
+        style={{    border: "2px solid white",borderRadius : "40px"}}
+        >
+          {item} 
+        </span>
+      ))}
+    </div>
+  )}
+</div>
 
           <div className="transcription-section">
             <h3>Transcription</h3>
-            <div className="transcription-container">
+            <div className="transcription-container" style={{height:"350px"}}>
               {transcription.length === 0 ? (
                 <p className="empty-transcription">
                   Transcription will appear here when enabled
