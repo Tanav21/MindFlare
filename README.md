@@ -1,8 +1,12 @@
 # Telehealth Solution for access to Healthcare from anywhere (Use Case 2) - MERN Stack
-<h3>Team MindFlare</h3>
+<h2>Team MindFlare</h2>
 
-<h4>Demo Video : <a href="https://drive.google.com/file/d/1NJhia69FLdut2MVN-Wf1YLT5gH0qfrnJ/view?usp=sharing" target="_blank">Video Link</a></h4>
+<h4>Demo Video : <a href="https://www.loom.com/share/3173dd3099c94b00957fd1f584f0a99f" target="_blank">Video Link</a></h4>
 <h4>Architecture : <a href="https://app.eraser.io/workspace/u2kWBKnTbCYu9hU1N73c" target="_blank">Architecture Link</a></h4>
+<h4>Website is Live at : <a href="https://mindflare-n6vz.onrender.com" target="_blank">Website Link</a></h4>
+<h4>Figma File : <a href="https://www.figma.com/proto/4RmIAAd2n9Kz7JpezexrF3/Prasum-Dubey-s-team-library?node-id=3315-3&p=f&t=NzxCcQs7wffMxDrX-1&scaling=min-zoom&content-scaling=fixed&page-id=0%3A1&starting-point-node-id=3315%3A3&show-proto-sidebar=1" target="_blank">Figma Link</a></h4>
+<p style={{fontSize:"15px"}}><strong>Note : </strong>The Figma link is invite-only. You can check the design details in the shared <a href="https://www.loom.com/share/b7986760660647eda5151875b088f638" target="_blank">Video Link</a></p>
+
 
 <h4>Problem Statement</h4>
 <p> Post pandemic, world has changed significantly. Quick access to quality, affordable and reliable healthcare from anywhere is the need of the hour. People are confined in remote locations in their homes and hence there is an urgent need to come up with a digitally enabled solution</p>
@@ -177,7 +181,6 @@ MindFlare/
 - Protected API routes
 - Secure payment processing
 - Encrypted data storage
-- PHI data protection
 
 ## API Endpoints
 
