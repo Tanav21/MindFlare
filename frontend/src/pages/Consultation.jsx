@@ -1957,7 +1957,7 @@ const Consultation = () => {
               </button>
             </div>
           </div>
-         <div className="bg-black  rounded-lg p-4 mt-4" style={{backgroundColor:"#2A2A2A"}}>
+         {/* <div className="bg-black  rounded-lg p-4 mt-4" style={{backgroundColor:"#2A2A2A"}}>
   <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2" style={{color:"#F8FFFF"}}>
     Medical Symptoms
   </h3>
@@ -1981,7 +1981,7 @@ const Consultation = () => {
       ))}
     </div>
   )}
-</div>
+</div> */}
 
           <div className="transcription-section">
             <h3>Transcription</h3>
